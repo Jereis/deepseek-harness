@@ -3,13 +3,17 @@
  * token renders in the business accent. A TextNode transform keeps the token
  * in its own styled node (splitting when typing merges text into it), and the
  * shell nudges the first leaf dirty when the claim flips so entering and
- * leaving claimed restyles without a text edit.
+ * leaving claimed restyles without a text edit. An invisible token (format
+ * characters only) has nothing to color, so it stays unstyled and unsplit.
  */
 import type { LexicalEditor, TextNode as TextNodeType } from 'lexical'
 import { $getRoot, $isElementNode, $isTextNode, TextNode } from 'lexical'
 
 /** Inline style carried by the claim-token node. */
 const TOKEN_STYLE = 'color: var(--dsw-alias-state-business-primary)'
+
+/** A token made only of format characters (U+2060 WORD JOINER, U+200B, ...) renders nothing. */
+const INVISIBLE_TOKEN_RE = /^\p{Cf}+$/u
 
 /** The document's first text leaf, or null (empty document / leading chip). */
 function firstTextLeaf(): TextNodeType | null {
@@ -41,11 +45,21 @@ export function registerClaimDecoration(editor: LexicalEditor, activeToken: () =
       if (node.getStyle() === TOKEN_STYLE) node.setStyle('')
       return
     }
+    if (INVISIBLE_TOKEN_RE.test(token)) {
+      // Coloring an invisible token only wraps it in a styled node the caret
+      // then inherits; leave it plain with the text typed after it.
+      if (node.getStyle() === TOKEN_STYLE) node.setStyle('')
+      return
+    }
     if (text.length > token.length) {
       // Typing at the token boundary lands in the styled node; split the
-      // overflow back out so only the token itself carries the color.
-      const [tokenNode] = node.splitText(token.length)
+      // overflow back out so only the token itself carries the color. The
+      // split-off node inherits the token style, and normalization would merge
+      // same-styled siblings straight back (a split/merge loop that ends in
+      // Lexical's infinite-transform error), so the overflow drops it here.
+      const [tokenNode, overflow] = node.splitText(token.length)
       if (tokenNode !== undefined && tokenNode.getStyle() !== TOKEN_STYLE) tokenNode.setStyle(TOKEN_STYLE)
+      if (overflow !== undefined && overflow.getStyle() !== '') overflow.setStyle('')
       return
     }
     if (node.getStyle() !== TOKEN_STYLE) node.setStyle(TOKEN_STYLE)

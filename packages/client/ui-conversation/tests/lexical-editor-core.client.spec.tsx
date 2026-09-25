@@ -10,7 +10,7 @@ import { createHeadlessEditor } from '@lexical/headless'
 import type { LexicalEditor, NodeKey, ParagraphNode } from 'lexical'
 import {
   $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $getSelection,
-  $isTextNode, $setSelection,
+  $isRangeSelection, $isTextNode, $setSelection,
 } from 'lexical'
 import type { ReferenceInsert } from '../src/client/contract/draft-editor.ts'
 import {
@@ -464,5 +464,96 @@ describe('claim precedence over text-ref entities', () => {
       if ($isTextNode(first)) first.markDirty()
     }, { discrete: true })
     expect(leaf()).toEqual({ type: 'text', style: TOKEN_STYLE, text: token })
+  })
+})
+
+describe('claim-token split', () => {
+  const TOKEN_STYLE = 'color: var(--dsw-alias-state-business-primary)'
+
+  /** A claimed editor whose draft is the token alone, caret after it. */
+  function claimed(token: string): { editor: LexicalEditor; release: () => void } {
+    const editor = makeEditor()
+    let claim: string | null = token
+    registerClaimDecoration(editor, () => claim)
+    editor.update(() => {
+      const paragraph = $createParagraphNode()
+      paragraph.append($createTextNode(token))
+      $getRoot().clear().append(paragraph)
+      paragraph.selectEnd()
+    }, { discrete: true })
+    const release = (): void => {
+      claim = null
+      editor.update(() => {
+        const first = ($getRoot().getFirstChild() as ParagraphNode).getFirstChild()
+        if ($isTextNode(first)) first.markDirty()
+      }, { discrete: true })
+    }
+    return { editor, release }
+  }
+
+  function leaves(editor: LexicalEditor): Array<[string, string]> {
+    return editor.getEditorState().read(() =>
+      ($getRoot().getFirstChild() as ParagraphNode).getChildren()
+        .map(node => [node.getTextContent(), $isTextNode(node) ? node.getStyle() : ''] as [string, string]))
+  }
+
+  /**
+   * Type the way the DOM path does once the caret sits on the token node: a
+   * selection rebuilt from the DOM adopts its anchor node's style, so the
+   * text grows the token node instead of starting a new one.
+   */
+  function typeIntoSeat(editor: LexicalEditor, text: string): void {
+    editor.update(() => {
+      const selection = $getSelection()
+      if (!$isRangeSelection(selection)) throw new Error('no range selection')
+      const anchor = selection.anchor.getNode()
+      if ($isTextNode(anchor)) selection.setStyle(anchor.getStyle())
+      selection.insertText(text)
+    }, { discrete: true })
+  }
+
+  it.each(['/plan ', '🖼 生图 '])('splits text typed into the styled %j seat out unstyled, without looping', (token) => {
+    const { editor, release } = claimed(token)
+    expect(leaves(editor)).toEqual([[token, TOKEN_STYLE]])
+    typeIntoSeat(editor, 'abc')
+    expect(leaves(editor)).toEqual([[token, TOKEN_STYLE], ['abc', '']])
+    typeIntoSeat(editor, 'd')
+    expect(leaves(editor)).toEqual([[token, TOKEN_STYLE], ['abcd', '']])
+    // A rejected update would leave a half-applied pending state behind.
+    expect(editor._pendingEditorState).toBeNull()
+    release()
+    expect(leaves(editor)).toEqual([[`${token}abcd`, '']])
+  })
+
+  it.each(['/plan ', '🖼 生图 '])('splits a seat whose text grew in place (%j, IME commit / DOM mutation)', (token) => {
+    const { editor } = claimed(token)
+    editor.update(() => {
+      const first = ($getRoot().getFirstChild() as ParagraphNode).getFirstChild()
+      if ($isTextNode(first)) first.setTextContent(`${token}abc`)
+    }, { discrete: true })
+    expect(leaves(editor)).toEqual([[token, TOKEN_STYLE], ['abc', '']])
+  })
+
+  it.each(['\u2060', '\u2063', '\u200B'])('leaves the invisible %j token unstyled and unsplit', (token) => {
+    const { editor, release } = claimed(token)
+    expect(leaves(editor)).toEqual([[token, '']])
+    typeIntoSeat(editor, 'abc')
+    expect(leaves(editor)).toEqual([[`${token}abc`, '']])
+    editor.update(() => {
+      const first = ($getRoot().getFirstChild() as ParagraphNode).getFirstChild()
+      if ($isTextNode(first)) first.setTextContent(`${token}abcd`)
+    }, { discrete: true })
+    expect(leaves(editor)).toEqual([[`${token}abcd`, '']])
+    release()
+    expect(leaves(editor)).toEqual([[`${token}abcd`, '']])
+  })
+
+  it('clears a stale accent left on an invisible seat', () => {
+    const { editor } = claimed('\u2060')
+    editor.update(() => {
+      const first = ($getRoot().getFirstChild() as ParagraphNode).getFirstChild()
+      if ($isTextNode(first)) first.setStyle(TOKEN_STYLE).setTextContent('\u2060abc')
+    }, { discrete: true })
+    expect(leaves(editor)).toEqual([['\u2060abc', '']])
   })
 })
