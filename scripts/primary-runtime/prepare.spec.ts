@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { zipSync } from 'fflate'
 import { expect, it } from 'vitest'
-import { downloadPrimaryRuntimeAsset, prepareOfficeSkillAssets, primaryRuntimePayloadDigest, smokePrimaryRuntime, unpackPrimaryRuntimeWheel } from './prepare.ts'
+import { downloadPrimaryRuntimeAsset, mergePrimaryRuntimeLock, prepareOfficeSkillAssets, primaryRuntimePayloadDigest, readPrimaryRuntimeExtraLock, smokePrimaryRuntime, unpackPrimaryRuntimeWheel, type PrimaryRuntimeExtraLock } from './prepare.ts'
 import lock from './lock.json' with { type: 'json' }
 
 it('covers every SDK wheel target with the shared interpreter lock', () => {
@@ -44,6 +44,48 @@ it('invalidates payload identity for shared wheels, package versions and package
   expect(primaryRuntimePayloadDigest('mac-arm64', wheel, '11.7.0')).not.toBe(original)
   expect(primaryRuntimePayloadDigest('mac-arm64', distribution, '11.7.0')).not.toBe(original)
   expect(primaryRuntimePayloadDigest('mac-arm64', lock, '11.7.1')).not.toBe(original)
+})
+
+const extraWheel = (file: string): { url: string, sha256: string } => ({ url: `https://files.example/${file}`, sha256: 'b'.repeat(64) })
+const extraLock: PrimaryRuntimeExtraLock = {
+  wheels: [extraWheel('sample_pure-1.0-py3-none-any.whl')],
+  pythonPackages: { 'sample-pure': '1.0' },
+  targets: {
+    'win-x64': { wheels: [extraWheel('sample_native-2.0-cp312-cp312-win_amd64.whl'), extraWheel('winonly-3-cp312-cp312-win_amd64.whl')], pythonPackages: { 'sample-native': '2.0', winonly: '3' } },
+    'mac-arm64': { wheels: [extraWheel('sample_native-2.0-cp312-cp312-macosx_11_0_arm64.whl')], pythonPackages: { 'sample-native': '2.0' } },
+  },
+}
+
+it('adds a carrier extra lock to one target without touching the shared lock', () => {
+  const windows = mergePrimaryRuntimeLock('win-x64', extraLock)
+  expect(windows.pythonPackages).toEqual({ ...lock.pythonPackages, 'sample-pure': '1.0', 'sample-native': '2.0', winonly: '3' })
+  expect(windows.wheels).toEqual([...lock.wheels, ...extraLock.wheels])
+  expect(windows.targets['win-x64'].wheels).toEqual([...lock.targets['win-x64'].wheels, ...extraLock.targets['win-x64']!.wheels])
+  expect(windows.targets['mac-arm64']).toEqual(lock.targets['mac-arm64'])
+  expect(mergePrimaryRuntimeLock('mac-arm64', extraLock).pythonPackages).not.toHaveProperty('winonly')
+  expect(primaryRuntimePayloadDigest('win-x64', windows, '11.7.0')).not.toBe(primaryRuntimePayloadDigest('win-x64', lock, '11.7.0'))
+  expect(primaryRuntimePayloadDigest('win-x64', mergePrimaryRuntimeLock('win-x64', extraLock), '11.7.0'))
+    .toBe(primaryRuntimePayloadDigest('win-x64', windows, '11.7.0'))
+  expect(lock.pythonPackages).not.toHaveProperty('sample-pure')
+})
+
+it('rejects an extra lock that omits the target, redeclares a locked distribution or disagrees with its wheels', () => {
+  expect(() => mergePrimaryRuntimeLock('linux-x64', extraLock)).toThrow('does not cover linux-x64')
+  expect(() => mergePrimaryRuntimeLock('mac-arm64', { ...extraLock, pythonPackages: { ...extraLock.pythonPackages, pillow: '12.3.0' } }))
+    .toThrow('redeclares pillow')
+  expect(() => mergePrimaryRuntimeLock('mac-arm64', { ...extraLock, pythonPackages: { 'sample-pure': '1.1' } }))
+    .toThrow('do not match its declared distributions')
+  expect(() => mergePrimaryRuntimeLock('mac-arm64', { ...extraLock, wheels: [] })).toThrow('do not match its declared distributions')
+})
+
+it('reads an extra lock file and refuses other JSON', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'desktop-extra-lock-'))
+  try {
+    await writeFile(join(root, 'extra.json'), JSON.stringify(extraLock))
+    expect(readPrimaryRuntimeExtraLock(join(root, 'extra.json'))).toEqual(extraLock)
+    await writeFile(join(root, 'other.json'), JSON.stringify({ wheels: [] }))
+    expect(() => readPrimaryRuntimeExtraLock(join(root, 'other.json'))).toThrow('is not an extra lock')
+  } finally { await rm(root, { recursive: true, force: true }) }
 })
 
 it('reports missing distribution metadata before trying to execute a stale native payload', async () => {

@@ -6,7 +6,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { cp } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import extractZip from 'extract-zip'
 import { x as extractTar } from 'tar'
@@ -91,6 +91,85 @@ export async function prepareOfficeSkillAssets(source: string, destination: stri
 /** A locked interpreter and wheel target. */
 export type PrimaryRuntimeTarget = keyof typeof lock.targets
 
+/** One hash-locked wheel archive. */
+export interface PrimaryRuntimeWheel {
+  readonly url: string
+  readonly sha256: string
+}
+
+/** Wheels and distributions one target adds beside the shared extra wheels. */
+export interface PrimaryRuntimeExtraTarget {
+  readonly wheels: readonly PrimaryRuntimeWheel[]
+  /** Distribution name to version for this target only, such as platform-specific bindings. */
+  readonly pythonPackages: Readonly<Record<string, string>>
+}
+
+/**
+ * Carrier-owned libraries installed beside the shared lock, in the same wheel format.
+ * It may only add distributions; every target it is prepared for must be listed.
+ */
+export interface PrimaryRuntimeExtraLock {
+  /** Wheels installed on every listed target. */
+  readonly wheels: readonly PrimaryRuntimeWheel[]
+  /** Distribution name to version for every listed target. */
+  readonly pythonPackages: Readonly<Record<string, string>>
+  readonly targets: Readonly<Partial<Record<PrimaryRuntimeTarget, PrimaryRuntimeExtraTarget>>>
+}
+
+const normalizeDistribution = (name: string): string => name.toLowerCase().replace(/[-_.]+/gu, '-')
+
+/**
+ * Add a carrier's extra lock to one target of the shared lock.
+ * @param target - Runtime target being prepared.
+ * @param extra - Carrier-owned extra lock.
+ * @param base - Shared interpreter and wheel lock.
+ * @returns A lock whose selected target, shared wheels and distribution map include the extra inputs.
+ * @throws When the extra lock omits the target, redeclares a locked distribution, or its wheels and declared versions disagree.
+ */
+export function mergePrimaryRuntimeLock(
+  target: PrimaryRuntimeTarget, extra: PrimaryRuntimeExtraLock, base: typeof lock = lock,
+): typeof lock {
+  const added = extra.targets[target]
+  if (added === undefined) throw new Error(`primary runtime: the extra lock does not cover ${target}`)
+  const pythonPackages: Record<string, string> = { ...base.pythonPackages }
+  const declared = new Set(Object.keys(pythonPackages).map(normalizeDistribution))
+  for (const [name, version] of [...Object.entries(extra.pythonPackages), ...Object.entries(added.pythonPackages)]) {
+    if (declared.has(normalizeDistribution(name))) throw new Error(`primary runtime: the extra lock redeclares ${name}`)
+    declared.add(normalizeDistribution(name))
+    pythonPackages[name] = version
+  }
+  const merged = {
+    ...base,
+    targets: { ...base.targets, [target]: { ...base.targets[target], wheels: [...base.targets[target].wheels, ...added.wheels] } },
+    wheels: [...base.wheels, ...extra.wheels],
+    pythonPackages: pythonPackages as typeof lock.pythonPackages,
+  }
+  const installed = [...merged.targets[target].wheels, ...merged.wheels].map(({ url }) => {
+    const [name, version] = basename(new URL(url).pathname).split('-')
+    return `${normalizeDistribution(name ?? '')}==${version ?? ''}`
+  }).sort()
+  const expected = Object.entries(pythonPackages).map(([name, version]) => `${normalizeDistribution(name)}==${version}`).sort()
+  if (installed.join('\n') !== expected.join('\n')) {
+    throw new Error(`primary runtime: the extra lock's wheels for ${target} do not match its declared distributions`)
+  }
+  return merged
+}
+
+/**
+ * Read a carrier's extra lock file.
+ * @param path - JSON file in the {@link PrimaryRuntimeExtraLock} format.
+ * @returns The parsed lock; its contents are checked when merged.
+ */
+export function readPrimaryRuntimeExtraLock(path: string): PrimaryRuntimeExtraLock {
+  const value = JSON.parse(readFileSync(path, 'utf8')) as Partial<PrimaryRuntimeExtraLock> | null
+  if (typeof value !== 'object' || value === null || !Array.isArray(value.wheels)
+    || typeof value.pythonPackages !== 'object' || value.pythonPackages === null
+    || typeof value.targets !== 'object' || value.targets === null) {
+    throw new Error(`primary runtime: ${path} is not an extra lock`)
+  }
+  return value as PrimaryRuntimeExtraLock
+}
+
 /** Build-only inputs shared by Desktop and SDK carriers. */
 export interface PreparePrimaryRuntimeOptions {
   /** Target whose archives and wheels are downloaded. */
@@ -103,6 +182,8 @@ export interface PreparePrimaryRuntimeOptions {
   readonly version: string
   /** Omit Node.js and pnpm for carriers providing only Python. */
   readonly pythonOnly?: boolean
+  /** Carrier-owned extra lock file ({@link PrimaryRuntimeExtraLock}) installed beside the shared lock. */
+  readonly extraLock?: string
 }
 
 /**
@@ -113,7 +194,8 @@ export interface PreparePrimaryRuntimeOptions {
 export async function preparePrimaryRuntime(options: PreparePrimaryRuntimeOptions): Promise<void> {
   const { target } = options
   const paths = { runtime: resolve(options.output), downloads: resolve(options.cache) }
-  const artifact = lock.targets[target]
+  const runtimeLock = options.extraLock === undefined ? lock : mergePrimaryRuntimeLock(target, readPrimaryRuntimeExtraLock(options.extraLock))
+  const artifact = runtimeLock.targets[target]
   mkdirSync(paths.runtime, { recursive: true })
   mkdirSync(paths.downloads, { recursive: true })
   const staging = mkdtempSync(join(tmpdir(), 'dsh-primary-'))
@@ -146,13 +228,13 @@ export async function preparePrimaryRuntime(options: PreparePrimaryRuntimeOption
       desktopVersion: options.version,
       platform: target === 'win-x64' ? 'win32' : target.startsWith('linux-') ? 'linux' : 'darwin',
       arch: target.endsWith('-arm64') ? 'arm64' : 'x64',
-      payloadDigest: primaryRuntimePayloadDigest(target, lock, pnpmVersion),
+      payloadDigest: primaryRuntimePayloadDigest(target, runtimeLock, pnpmVersion),
       python: lock.pythonVersion,
       ...(pnpmVersion === undefined ? {} : { node: lock.nodeVersion, pnpm: pnpmVersion }),
-      pythonPackages: lock.pythonPackages,
+      pythonPackages: runtimeLock.pythonPackages,
     }
     const entries = workspaceDependencyPaths(output, manifest)
-    for (const wheel of [...artifact.wheels, ...lock.wheels]) {
+    for (const wheel of [...artifact.wheels, ...runtimeLock.wheels]) {
       await unpackPrimaryRuntimeWheel(await downloadPrimaryRuntimeAsset(wheel.url, wheel.sha256, paths.downloads), entries.pythonPackages)
     }
     writeFileSync(join(output, 'runtime.json'), `${JSON.stringify(manifest, undefined, 2)}\n`)
@@ -191,17 +273,17 @@ export function smokePrimaryRuntime(root: string, environment: NodeJS.ProcessEnv
 if (import.meta.main) {
   const { values } = parseArgs({ options: {
     target: { type: 'string' }, output: { type: 'string' }, cache: { type: 'string' },
-    'python-only': { type: 'boolean', default: false },
+    'python-only': { type: 'boolean', default: false }, 'extra-lock': { type: 'string' },
   } })
   if (!values.target || !Object.hasOwn(lock.targets, values.target) || !values.output) {
-    throw new Error(`Usage: pnpm run prepare:primary-runtime --target <${Object.keys(lock.targets).join('|')}> --output <directory> [--cache <directory>] [--python-only]`)
+    throw new Error(`Usage: pnpm run prepare:primary-runtime --target <${Object.keys(lock.targets).join('|')}> --output <directory> [--cache <directory>] [--python-only] [--extra-lock <file>]`)
   }
   const { version } = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }
   const output = resolve(values.output)
   await preparePrimaryRuntime({
     target: values.target as PrimaryRuntimeTarget, output,
     cache: values.cache ?? join(tmpdir(), 'dsh-primary-runtime-downloads'), version,
-    pythonOnly: values['python-only'],
+    pythonOnly: values['python-only'], ...(values['extra-lock'] === undefined ? {} : { extraLock: resolve(values['extra-lock']) }),
   })
   smokePrimaryRuntime(join(output, 'primary-runtime'))
 }
