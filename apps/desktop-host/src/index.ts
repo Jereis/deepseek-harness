@@ -18,6 +18,10 @@ async function main(): Promise<void> {
   const runtimeDir = process.argv[2] as string
   const projectDir = process.argv[3] as string
   installOfficeEngineResolution(runtimeDir)
+  const primaryRuntime = process.argv[4] ?? join(runtimeDir, '..', 'runtime', 'primary-runtime')
+  // Same carrier default the SDK runtime publishes: profile rows that start their own
+  // interpreters read the payload in place, before any workspace-dependency installation.
+  process.env.DSH_BUNDLED_PRIMARY_RUNTIME = primaryRuntime
   const installAnchor = join(runtimeDir, 'node_modules', '@deepseek-ai', 'dsh', 'package.json')
   const profile = loadProfileDirectory('dsh', projectDir, installAnchor)
   const application = runProfile({
@@ -72,7 +76,7 @@ async function main(): Promise<void> {
   control.updateTasks = installDesktopUpdateTaskControl(ctx)
   await ctx.plugin(desktopOffice, {
     runtimeDir,
-    source: process.argv[4] ?? join(runtimeDir, '..', 'runtime', 'primary-runtime'),
+    source: primaryRuntime,
     root: join(resolveDshHome(), 'dsh-runtimes', 'dsh-primary-runtime'),
   })
   installPlatformSessionPublisher(ctx, (session) => {
