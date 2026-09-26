@@ -1,3 +1,5 @@
+import { brandMessages, DESKTOP_BRAND } from './brand.ts'
+
 /** Typed English and Chinese copy owned by the Electron shell. */
 
 export const en = {
@@ -266,8 +268,8 @@ export interface DesktopLocale {
 /** Resolve Electron's locale to one shipped Desktop dictionary. */
 export function resolveDesktopLocale(locale: string): DesktopLocale {
   return locale.toLowerCase().startsWith('zh')
-    ? { id: 'zh-CN', messages: zh }
-    : { id: 'en', messages: en }
+    ? { id: 'zh-CN', messages: brandMessages(zh, DESKTOP_BRAND.displayName.zh) }
+    : { id: 'en', messages: brandMessages(en, DESKTOP_BRAND.displayName.en) }
 }
 
 /**

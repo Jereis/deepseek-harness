@@ -2,6 +2,10 @@ import { defineConfig } from 'tsdown'
 import { build } from 'vite'
 import { fileURLToPath } from 'node:url'
 import { readFile } from 'node:fs/promises'
+import { readDesktopBrand } from './scripts/desktop-brand.mjs'
+
+// A distribution's identity (DSH_DESKTOP_BRAND_FILE), compiled into main and every preload.
+const define = { __DSH_DESKTOP_BRAND__: JSON.stringify(readDesktopBrand().brand) }
 
 export default defineConfig([
   {
@@ -37,6 +41,7 @@ export default defineConfig([
         },
       })
     },
+    define,
     outDir: 'lib',
     format: ['esm'],
     platform: 'node',
@@ -49,6 +54,7 @@ export default defineConfig([
   ...(['preload-app', 'preload-welcome', 'preload-platform-account', 'preload-mandatory', 'preload-update-dialog'] as const).map(name => ({
     // Sandboxed Electron preloads run as CommonJS even though the application package is ESM.
     entry: { [name]: `lib/types/${name}.js` },
+    define,
     outDir: 'lib',
     format: 'cjs' as const,
     codeSplitting: false,

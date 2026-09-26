@@ -2,6 +2,7 @@ import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
 /** Electron shell: desktop project ownership, custom protocol, windows, and lifecycle. */
 
 import { readFile, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -28,6 +29,7 @@ import { installDesktopDirectoryPicker } from './directory-picker.ts'
 import { installMicrophonePermissions } from './microphone-permissions.ts'
 import { DesktopBackendController } from './backend-controller.ts'
 import { DESKTOP_IPC, SCHEME, assertDesktopSender, type DesktopUpdateState } from './ipc.ts'
+import { DEFAULT_DESKTOP_BRAND, DESKTOP_BRAND } from './brand.ts'
 import { formatDesktopMessage, resolveDesktopLocale, resolveDesktopStartupLocale } from './locale.ts'
 import { claimDesktopSingleInstance } from './single-instance.ts'
 import { DesktopUpdateCoordinator } from './update-coordinator.ts'
@@ -65,6 +67,11 @@ const rendererConsole = new RendererConsoleTail()
 // Platform-conventional logs directory (macOS ~/Library/Logs/<name>, otherwise under userData);
 // set before ready so the first fatal report already resolves under it.
 app.setAppLogsPath()
+
+// A distribution's own Harness home (brand.ts), unless the environment names one.
+if (DESKTOP_BRAND.homeDirName !== DEFAULT_DESKTOP_BRAND.homeDirName && !process.env.DSH_HOME?.trim()) {
+  process.env.DSH_HOME = join(homedir(), DESKTOP_BRAND.homeDirName)
+}
 
 function currentDesktopLocale(): ReturnType<typeof resolveDesktopLocale> {
   return resolveDesktopLocale(windowsLanguage ?? app.getLocale())
@@ -798,7 +805,7 @@ async function main(): Promise<void> {
   })
 
   app.setAboutPanelOptions({
-    applicationName: 'DeepSeek Harness',
+    applicationName: currentDesktopLocale().messages.aboutProduct,
     applicationVersion: app.getVersion(),
     // The release has no separate build number; omit Electron's bundle version.
     version: '',
@@ -1023,10 +1030,11 @@ async function main(): Promise<void> {
     window.focus()
   }
 
-  if (app.isPackaged || process.env.DSH_DESKTOP_DEV_APP === '1') app.setAsDefaultProtocolClient('dsh')
+  const scheme = DESKTOP_BRAND.protocolScheme
+  if (app.isPackaged || process.env.DSH_DESKTOP_DEV_APP === '1') app.setAsDefaultProtocolClient(scheme)
   app.on('open-url', (event, url) => {
     event.preventDefault()
-    if (url === 'dsh://open' || url === 'dsh://open/') focusPrimaryWindow()
+    if (url === `${scheme}://open` || url === `${scheme}://open/`) focusPrimaryWindow()
   })
 
   app.on('activate', () => {
