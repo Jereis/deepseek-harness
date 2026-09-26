@@ -76,7 +76,7 @@ export function bundlePatchPaths(packageDir: string, bundle: DshBundleManifest):
 
 /** One resolved bundle layer of a profile. */
 export interface ProfileLayer {
-  /** The bundle's package name, as listed in `dsh.profile.bundles`. */
+  /** The bundle's package name, as listed in `dsh.profile.bundles` or the carrier's bundle list. */
   packageName: string
   /** Absolute directory of the resolved bundle package. */
   packageDir: string
@@ -84,6 +84,11 @@ export interface ProfileLayer {
   patchPaths: readonly string[]
   /** The parsed patch lists of every file, concatenated in application order. */
   patches: PatchOptions[]
+  /**
+   * Set for a bundle the application carrier ships and always loads, independent of
+   * the profile manifest. Its package joins the installation scope.
+   */
+  carrier?: true
 }
 
 /** A loaded profile: resolved bundle layers plus the user's own patch layer. */
@@ -92,7 +97,7 @@ export interface Profile {
   name: string
   /** Absolute profile directory. */
   dir: string
-  /** Bundle layers in `dsh.profile.bundles` order. */
+  /** Bundle layers in `dsh.profile.bundles` order, then carrier bundle layers. */
   layers: ProfileLayer[]
   /** Absolute path of the profile's own patch file. */
   patchPath: string
@@ -337,6 +342,7 @@ function profileDependencyNames(manifest: ProfileManifest): string[] {
 /** Resolve the installation packages that the runtime resolver supplies to every profile. */
 function collectInstallationScopePackages(
   installAnchor: string, skippedBundles: ReadonlySet<string>,
+  carrierLayers: readonly ProfileLayer[] = [],
 ): {
   packageNames: ReadonlySet<string>
   packageDirs: ReadonlyMap<string, string>
@@ -360,6 +366,17 @@ function collectInstallationScopePackages(
   // BFS over the resolvable dependency graph; the visited set is the link
   // map itself (first resolution wins, matching Node's own nearest-wins).
   const queue: { anchor: string; manifest: ProfileManifest }[] = [{ anchor: canonicalAnchor, manifest: appManifest }]
+  // Carrier bundles are application-owned installation packages: each is declared by the
+  // installation itself, and its dependencies resolve after the dsh closure's own.
+  for (const layer of carrierLayers) {
+    if (links.has(layer.packageName)) continue
+    const manifestPath = join(realModuleDirectory(layer.packageDir), 'package.json')
+    const manifest = readPackageManifest(manifestPath)
+    links.set(layer.packageName, layer.packageDir)
+    declarers.set(layer.packageName, canonicalAnchor)
+    versions.set(layer.packageName, manifest.version)
+    queue.push({ anchor: manifestPath, manifest })
+  }
   for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
     // Peer dependencies participate: Service Definition packages (dsh-subprocess,
     // dsh-compaction, ...) are peers of their implementations, never plain
@@ -411,6 +428,7 @@ export async function createRuntimeResolution(
   const manifest = readOptionalProfileManifest(profile)
   const { packageNames, packageDirs, declarers, versions } = collectInstallationScopePackages(
     installAnchor, skippedProfileBundles(profile, manifest),
+    profile?.layers.filter(layer => layer.carrier === true) ?? [],
   )
   const profileDeclarers = new Map<string, string>()
   const profileVersions = new Map<string, string | undefined>()
@@ -636,20 +654,45 @@ export function resolveBundleDir(
  * @param binName - the diagnostic prefix on thrown errors.
  * @param dir - absolute profile package directory.
  * @param installAnchor - absolute path of the owning dsh app's package.json.
- * @param options - `userLayer: false` skips reading `cordis.patch.yml`.
+ * @param options - `userLayer: false` skips reading `cordis.patch.yml`; `carrierBundles`
+ * names bundles the owning application ships in its installation and always loads,
+ * after the profile's own so their patches can adjust the platform rows. The application vouches for their compatibility, so
+ * the profile's version exemptions do not apply to them.
  * @returns the successfully loaded bundle layers and optional user patch layer.
  */
 export function loadProfileDirectory(
   binName: string,
   dir: string,
   installAnchor: string,
-  options: { userLayer?: boolean } = {},
+  options: { userLayer?: boolean; carrierBundles?: readonly string[] } = {},
 ): Profile {
   const manifest = readProfileManifest(binName, dir)
+  const carrierBundles = options.carrierBundles ?? []
   const bundles = manifest.dsh?.profile?.bundles ?? []
   const layers: ProfileLayer[] = []
+  const carrierLayers: ProfileLayer[] = []
   const exemptions = bundles.length === 0 ? {} : readProfileVersionExemptions(dir)
+  // Carrier bundles resolve from the installation only: the profile cannot supply,
+  // replace or drop them, and recovery that resets the profile keeps them.
+  for (const packageName of carrierBundles) {
+    try {
+      const packageDir = packageDirFromAnchor(installAnchor, packageName)
+      if (packageDir === undefined) {
+        throw new Error(`${binName}: cannot resolve carrier bundle ${JSON.stringify(packageName)} from the dsh installation`)
+      }
+      const bundle = readProfileManifest(binName, packageDir).dsh?.bundle
+      if (bundle === undefined) {
+        throw new Error(`${binName}: carrier bundle ${JSON.stringify(packageName)} declares no dsh.bundle in its package.json`)
+      }
+      const patchPaths = bundlePatchPaths(packageDir, bundle)
+      const patches = patchPaths.flatMap(patchPath => loadOverlayPatches(binName, patchPath))
+      carrierLayers.push({ packageName, packageDir, patchPaths, patches, carrier: true })
+    } catch (error) {
+      process.stderr.write(`${binName}: skipping carrier bundle ${JSON.stringify(packageName)}: ${String(error)}\n`)
+    }
+  }
   for (const packageName of bundles) {
+    if (carrierBundles.includes(packageName)) continue
     try {
       const packageDir = resolveBundleDir(binName, packageName, installAnchor, dir)
       const bundleManifest = readProfileManifest(binName, packageDir)
@@ -667,6 +710,7 @@ export function loadProfileDirectory(
       process.stderr.write(`${binName}: skipping profile bundle ${JSON.stringify(packageName)}: ${String(error)}\n`)
     }
   }
+  layers.push(...carrierLayers)
   const patchPath = join(dir, PROFILE_PATCH_FILENAME)
   const patches = options.userLayer !== false && existsSync(patchPath)
     ? loadOverlayPatches(binName, patchPath)

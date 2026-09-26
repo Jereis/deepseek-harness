@@ -3,7 +3,7 @@
 import { spawn, execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { join, resolve } from 'node:path'
+import { delimiter, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { DESKTOP_HOST_PROTOCOL_VERSION } from '../src/host-protocol.ts'
 import type { DesktopRelease } from '../src/release.ts'
@@ -118,6 +118,8 @@ async function main(): Promise<void> {
     dependencyDir: join(REPOSITORY_ROOT, 'node_modules', '.pnpm', 'node_modules'),
     release,
     target: resolveDesktopBuildTarget(),
+    // Built bundle directories the application carries, separated like PATH.
+    carrierBundles: (process.env.DSH_DESKTOP_CARRIER_BUNDLES ?? '').split(delimiter).filter(path => path.trim() !== '').map(path => resolve(path)),
   })
   await preparePrimaryRuntime()
   await launchElectron()

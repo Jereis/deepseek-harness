@@ -53,6 +53,42 @@ describe('desktop development project', () => {
     expect(descriptor.sharedPackages).toContainEqual({ name: 'unhoisted', version: '1.2.3', path: 'node_modules/unhoisted' })
   })
 
+  it('copies carrier bundles as a tarball would hold them and records them for the Host', () => {
+    const root = temporaryRoot()
+    const cli = join(root, 'cli')
+    const host = join(root, 'host')
+    const hoisted = join(root, 'hoisted')
+    const carrier = join(root, 'carrier')
+    mkdirSync(cli, { recursive: true })
+    mkdirSync(join(host, 'lib'), { recursive: true })
+    mkdirSync(hoisted)
+    writeFileSync(join(cli, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '1.2.3' }))
+    writeFileSync(join(host, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-desktop-host', version: '1.2.3' }))
+    writeFileSync(join(host, 'lib/index.js'), '')
+    for (const dir of ['lib', 'presets/one', 'node_modules/dev-only', 'src']) mkdirSync(join(carrier, dir), { recursive: true })
+    writeFileSync(join(carrier, 'package.json'), JSON.stringify({
+      name: '@acme/carried', version: '0.1.0', files: ['lib/index.js', 'presets/**/*'],
+      dsh: { bundle: { patch: ['./cordis.patch.yml', './presets/one.patch.yml'] } },
+    }))
+    for (const file of ['lib/index.js', 'cordis.patch.yml', 'presets/one.patch.yml', 'presets/one/persona.md', 'node_modules/dev-only/index.js', 'src/index.ts']) {
+      writeFileSync(join(carrier, file), '')
+    }
+    const project = prepareDevelopmentProject({
+      projectDir: join(root, 'runtime'), cliDir: cli, hostDir: host, dependencyDir: hoisted, release: release(), target: 'win-x64',
+      carrierBundles: [carrier],
+    })
+    const copied = join(project, 'node_modules/@acme/carried')
+    for (const file of ['package.json', 'lib/index.js', 'cordis.patch.yml', 'presets/one.patch.yml', 'presets/one/persona.md']) {
+      expect(readFileSync(join(copied, file), 'utf8'), file).toBeDefined()
+    }
+    // Development dependencies stay behind: the bundle must resolve its peers from this runtime.
+    expect(() => readFileSync(join(copied, 'node_modules/dev-only/index.js'))).toThrow()
+    expect(() => readFileSync(join(copied, 'src/index.ts'))).toThrow()
+    const manifest = JSON.parse(readFileSync(join(project, 'package.json'), 'utf8')) as { dsh: { carrier: { bundles: string[] }, profile: unknown } }
+    expect(manifest.dsh.carrier.bundles).toEqual(['@acme/carried'])
+    expect(manifest.dsh.profile).toBeDefined()
+  })
+
   it('manages development plugins without modifying the linked workspace packages', async () => {
     const root = temporaryRoot()
     const cli = join(root, 'apps', 'cli')

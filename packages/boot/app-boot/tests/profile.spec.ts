@@ -451,6 +451,46 @@ describe('loadProfile', () => {
     expect(loadProfileDirectory('dsh', dir, anchor).layers.map(layer => layer.packageName)).toEqual(['guarded', 'kept'])
   })
 
+  it('loads carrier bundles from the installation after the profile s own, and resolves them there', async () => {
+    const anchor = stageInstallation({
+      carried: { patch: '- insert: [{ id: c, name: carried }]\n', deps: { 'carried-dep': '0.0.0' } },
+      'carried-dep': {},
+      listed: { patch: '- insert: [{ id: l, name: listed }]\n' },
+    })
+    // Carrier packages sit in the installation without being dsh dependencies.
+    const appManifest = JSON.parse(readFileSync(anchor, 'utf8')) as { dependencies: Record<string, string> }
+    delete appManifest.dependencies.carried
+    delete appManifest.dependencies['carried-dep']
+    writeFileSync(anchor, JSON.stringify(appManifest))
+    const home = tmp()
+    const dir = resolveProfileDir('demo', home)
+    // The profile lists the carrier too; it loads once, as the carrier layer.
+    initProfile(dir, ['listed', 'carried'])
+    const warn = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    onTestFinished(() => { warn.mockRestore() })
+
+    const profile = loadProfileDirectory('dsh', dir, anchor, { carrierBundles: ['carried', 'absent'] })
+    expect(profile.layers.map(layer => [layer.packageName, layer.carrier === true]))
+      .toEqual([['listed', false], ['carried', true]])
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('skipping carrier bundle "absent":'))
+
+    const resolution = await createRuntimeResolution({ installAnchor: anchor, profile, home })
+    const scopes = Object.fromEntries(resolution.entries.map(entry => [entry.name, entry.scope]))
+    expect(scopes).toMatchObject({ carried: 'installation', 'carried-dep': 'installation', listed: 'installation' })
+    // Recovery resets a profile to its template bundles; the carrier still loads and resolves.
+    const reset = resolveProfileDir('reset', home)
+    initProfile(reset, ['listed'])
+    const kept = loadProfileDirectory('dsh', reset, anchor, { carrierBundles: ['carried'] })
+    expect(kept.layers.map(layer => layer.packageName)).toEqual(['listed', 'carried'])
+    const keptResolution = await createRuntimeResolution({ installAnchor: anchor, profile: kept, home })
+    expect(keptResolution.entries.find(entry => entry.name === 'carried-dep')?.scope).toBe('installation')
+    // Without the carrier list the same profile cannot see it, which is what the hook exists for.
+    const plain = loadProfileDirectory('dsh', reset, anchor)
+    expect(plain.layers.map(layer => layer.packageName)).toEqual(['listed'])
+    const plainResolution = await createRuntimeResolution({ installAnchor: anchor, profile: plain, home })
+    expect(plainResolution.entries.find(entry => entry.name === 'carried-dep')).toBeUndefined()
+  })
+
   it('still rejects invalid profile manifests and user patches', () => {
     const anchor = stageInstallation({})
     const dir = tmp()

@@ -1,6 +1,7 @@
 /** Prepare the disposable npm-project view used by an unpackaged Electron shell. */
 
 import {
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -39,6 +40,40 @@ export interface DevelopmentProjectOptions {
   readonly release: DesktopRelease
   /** Build target whose prepared payload the disposable project runs against. */
   readonly target: DesktopAutoUpdateTarget
+  /**
+   * Built bundle package directories the project carries and always loads, in load
+   * order (`DSH_DESKTOP_CARRIER_BUNDLES`). Each is copied the way a packed tarball
+   * would hold it, so it resolves its peers from this runtime and never from its
+   * own development dependencies.
+   */
+  readonly carrierBundles?: readonly string[]
+}
+
+interface CarrierManifest extends PackageManifest {
+  readonly files?: readonly string[]
+  readonly dsh?: { readonly bundle?: { readonly patch?: string | readonly string[] } }
+}
+
+/**
+ * Copy one built bundle package's publishable files into the project.
+ * @param source - The package directory.
+ * @param destinationModules - The project's node_modules.
+ * @returns The package name.
+ */
+function copyCarrierBundle(source: string, destinationModules: string): string {
+  const manifest = readManifest(join(source, 'package.json')) as CarrierManifest
+  if (typeof manifest.name !== 'string' || manifest.dsh?.bundle === undefined) {
+    throw new Error(`desktop development: carrier bundle ${source} must name a package declaring dsh.bundle`)
+  }
+  const destination = join(destinationModules, manifest.name)
+  removeOwnedPath(destination)
+  mkdirSync(destination, { recursive: true })
+  const patches = [manifest.dsh.bundle.patch ?? []].flat().map(path => path.replace(/^\.\//u, ''))
+  const shipped = new Set(['package.json', ...patches, ...(manifest.files ?? []).map(pattern => pattern.split('/')[0]!)])
+  for (const entry of shipped) {
+    if (existsSync(join(source, entry))) cpSync(join(source, entry), join(destination, entry), { recursive: true, dereference: true })
+  }
+  return manifest.name
 }
 
 function readManifest(path: string): PackageManifest {
@@ -162,6 +197,12 @@ export function prepareDevelopmentProject(options: DevelopmentProjectOptions): s
     const manifest = readManifest(join(destinationModules, name, 'package.json'))
     return typeof manifest.version === 'string' ? [{ name, version: manifest.version, path: `node_modules/${name}` }] : []
   })
+  const carriers = (options.carrierBundles ?? []).map(source => copyCarrierBundle(source, destinationModules))
+  if (carriers.length > 0) {
+    const projectManifest = JSON.parse(readFileSync(join(options.projectDir, 'package.json'), 'utf8')) as Record<string, unknown> & { dsh?: Record<string, unknown> }
+    projectManifest.dsh = { ...projectManifest.dsh, carrier: { bundles: carriers } }
+    writeFileSync(join(options.projectDir, 'package.json'), `${JSON.stringify(projectManifest, undefined, 2)}\n`, { mode: 0o600 })
+  }
   const runtime: DesktopRuntimeDescriptor = { schemaVersion: 1, release: options.release,
     ...desktopTargetPlatform(options.target), sharedPackages, files: [] }
   writeFileSync(join(options.projectDir, DESKTOP_RUNTIME_FILE), `${JSON.stringify(runtime, undefined, 2)}\n`)

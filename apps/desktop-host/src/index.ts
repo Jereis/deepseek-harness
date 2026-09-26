@@ -1,5 +1,6 @@
 /** Launch the Desktop profile through the Web application and report its URL to Electron. */
 
+import { readFileSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 import { inspect } from 'node:util'
 import { loadLayeredEnv, loadProfileDirectory } from '@deepseek-ai/dsh-app-boot'
@@ -14,6 +15,23 @@ import { installDesktopUpdateTaskControl } from './update-tasks.ts'
 import { installPlatformSessionPublisher } from './platform-session.ts'
 import { installOfficeEngineResolution } from './office-engine.ts'
 
+/**
+ * Bundles the runtime project ships and always loads (`dsh.carrier.bundles` in its
+ * package.json), installed beside dsh itself. Written at build time by the
+ * application that assembles the runtime; absent in a plain Desktop build.
+ * @param runtimeDir - the runtime project directory.
+ * @returns the carrier bundle names, in load order.
+ */
+export function readCarrierBundles(runtimeDir: string): string[] {
+  const manifest = JSON.parse(readFileSync(join(runtimeDir, 'package.json'), 'utf8')) as { dsh?: { carrier?: { bundles?: unknown } } }
+  const bundles = manifest.dsh?.carrier?.bundles
+  if (bundles === undefined) return []
+  if (!Array.isArray(bundles) || !bundles.every(name => typeof name === 'string' && name !== '')) {
+    throw new Error('desktop host: runtime package.json dsh.carrier.bundles must be a list of package names')
+  }
+  return bundles as string[]
+}
+
 async function main(): Promise<void> {
   const runtimeDir = process.argv[2] as string
   const projectDir = process.argv[3] as string
@@ -23,7 +41,7 @@ async function main(): Promise<void> {
   // interpreters read the payload in place, before any workspace-dependency installation.
   process.env.DSH_BUNDLED_PRIMARY_RUNTIME = primaryRuntime
   const installAnchor = join(runtimeDir, 'node_modules', '@deepseek-ai', 'dsh', 'package.json')
-  const profile = loadProfileDirectory('dsh', projectDir, installAnchor)
+  const profile = loadProfileDirectory('dsh', projectDir, installAnchor, { carrierBundles: readCarrierBundles(runtimeDir) })
   const application = runProfile({
     environment: loadLayeredEnv('dsh'),
     profile: 'desktop',
