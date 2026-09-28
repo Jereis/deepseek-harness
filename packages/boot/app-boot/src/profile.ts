@@ -103,6 +103,27 @@ export interface Profile {
   patchPath: string
   /** The profile's own patches; empty when the file is absent. */
   patches: PatchOptions[]
+  /** Selected bundles that contributed no layer, in `dsh.profile.bundles` order, with why. */
+  skippedBundles: SkippedBundle[]
+}
+
+/** A selected bundle the profile could not load, or whose own DSH peers the profile does not exempt. */
+export interface SkippedBundle {
+  /** The bundle's package name from `dsh.profile.bundles`. */
+  packageName: string
+  /** The resolution, manifest, compatibility, or patch-loading failure. */
+  reason: string
+}
+
+/**
+ * Print each skipped bundle once; loading never prints, so launchers call this once per start.
+ * @param binName - the diagnostic prefix.
+ * @param profile - the loaded profile.
+ */
+export function reportSkippedBundles(binName: string, profile: Pick<Profile, 'skippedBundles'>): void {
+  for (const { packageName, reason } of profile.skippedBundles) {
+    process.stderr.write(`${binName}: skipping profile bundle ${JSON.stringify(packageName)}: ${reason}\n`)
+  }
 }
 
 /** One package the runtime resolution supplies at the interception layer. */
@@ -189,12 +210,15 @@ export const DEFAULT_PROFILE_BUNDLES: readonly string[] = ['@deepseek-ai/dsh-bas
 /**
  * The bundles the dsh installation ships for a person to switch on: each a
  * runtime dependency of the installation that declares `dsh.bundle.patch`,
- * selected by no shipped template, and offered switched off by the plugin
- * manager ([rationale](../../../../.agents/notes/implemented/process/2026-09-15-shipped-optional-bundles.md)).
+ * an `icon`, and `./locale/*.json` display metadata, selected by no shipped
+ * template, and offered switched off by the plugin manager
+ * ([rationale](../../../../.agents/notes/implemented/process/2026-09-15-shipped-optional-bundles.md),
+ * [admission](../../../../.agents/notes/implemented/architecture/2026-09-21-experimental-capabilities-as-optional-bundles.md)).
  */
 export const OPTIONAL_BUNDLES: readonly string[] = [
-  '@deepseek-ai/dsh-experimental-voice-input-bundle',
   '@deepseek-ai/dsh-experimental-agent-team-profile',
+  '@deepseek-ai/dsh-experimental-voice-input-bundle',
+  '@deepseek-ai/dsh-experimental-auto-review',
 ]
 
 const PROFILE_PATCH_TEMPLATE = `# Your patch layer for this dsh profile, applied after every bundle layer:
@@ -427,7 +451,7 @@ export async function createRuntimeResolution(
   const profilesDir = join(home, PROFILES_DIR)
   const manifest = readOptionalProfileManifest(profile)
   const { packageNames, packageDirs, declarers, versions } = collectInstallationScopePackages(
-    installAnchor, skippedProfileBundles(profile, manifest),
+    installAnchor, new Set(profile?.skippedBundles.map(skipped => skipped.packageName)),
     profile?.layers.filter(layer => layer.carrier === true) ?? [],
   )
   const profileDeclarers = new Map<string, string>()
@@ -465,18 +489,6 @@ function readOptionalProfileManifest(profile: Profile | undefined): ProfileManif
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
     throw error
   }
-}
-
-/**
- * Identify selected bundles that did not produce a loaded layer.
- * @param profile - loaded profile, when present.
- * @param manifest - its parsed manifest, when present.
- * @returns selected bundle names missing from the loaded layers, for resolution and diagnostics.
- */
-export function skippedProfileBundles(profile: Profile | undefined, manifest: ProfileManifest | undefined): ReadonlySet<string> {
-  const selected = manifest?.dsh?.profile?.bundles ?? []
-  const loaded = new Set(profile?.layers.map(layer => layer.packageName))
-  return new Set(selected.filter(name => !loaded.has(name)))
 }
 
 /** Return installed direct dependencies that Node resolves before profile fallback. */
@@ -649,15 +661,16 @@ export function resolveBundleDir(
  * Load an already initialized profile directory without resolving it through
  * the shared Harness home. This is used by application-owned profiles whose
  * package project and lifecycle belong to that application.
- * Unreadable bundles, and bundles whose own dsh peers the profile does not exempt, are reported
- * on stderr and skipped without changing the manifest.
+ * Unreadable bundles, and bundles whose own dsh peers the profile does not exempt, are skipped
+ * without changing the manifest and listed in `skippedBundles`; nothing is printed.
  * @param binName - the diagnostic prefix on thrown errors.
  * @param dir - absolute profile package directory.
  * @param installAnchor - absolute path of the owning dsh app's package.json.
  * @param options - `userLayer: false` skips reading `cordis.patch.yml`; `carrierBundles`
  * names bundles the owning application ships in its installation and always loads,
  * after the profile's own so their patches can adjust the platform rows. The application vouches for their compatibility, so
- * the profile's version exemptions do not apply to them.
+ * the profile's version exemptions do not apply to them. A carrier bundle that fails to load is
+ * an installation defect, reported on stderr rather than listed in `skippedBundles`.
  * @returns the successfully loaded bundle layers and optional user patch layer.
  */
 export function loadProfileDirectory(
@@ -671,6 +684,7 @@ export function loadProfileDirectory(
   const bundles = manifest.dsh?.profile?.bundles ?? []
   const layers: ProfileLayer[] = []
   const carrierLayers: ProfileLayer[] = []
+  const skippedBundles: SkippedBundle[] = []
   const exemptions = bundles.length === 0 ? {} : readProfileVersionExemptions(dir)
   // Carrier bundles resolve from the installation only: the profile cannot supply,
   // replace or drop them, and recovery that resets the profile keeps them.
@@ -707,7 +721,7 @@ export function loadProfileDirectory(
       const patches = patchPaths.flatMap(patchPath => loadOverlayPatches(binName, patchPath))
       layers.push({ packageName, packageDir, patchPaths, patches })
     } catch (error) {
-      process.stderr.write(`${binName}: skipping profile bundle ${JSON.stringify(packageName)}: ${String(error)}\n`)
+      skippedBundles.push({ packageName, reason: String(error) })
     }
   }
   layers.push(...carrierLayers)
@@ -715,13 +729,13 @@ export function loadProfileDirectory(
   const patches = options.userLayer !== false && existsSync(patchPath)
     ? loadOverlayPatches(binName, patchPath)
     : []
-  return { name: basename(dir), dir, layers, patchPath, patches }
+  return { name: basename(dir), dir, layers, patchPath, patches, skippedBundles }
 }
 
 /**
  * Load a profile: resolve every `dsh.profile.bundles` entry to its patch
  * layer and parse the profile's own patch file. Unreadable or incompatible bundles
- * are reported on stderr and skipped; profile manifest and user patch errors still throw.
+ * are skipped and listed in `skippedBundles`; profile manifest and user patch errors still throw.
  * @param binName - the diagnostic prefix on thrown errors.
  * @param name - the profile name.
  * @param installAnchor - absolute path of the dsh app's package.json (first resolution anchor).
