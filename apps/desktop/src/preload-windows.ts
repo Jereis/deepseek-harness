@@ -19,7 +19,11 @@ export function syncWindowsAppearance(): void {
     const root = document.documentElement
     const menu = installWindowsMenu()
     const probe = document.createElement('span')
-    probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;background-color:var(--dsw-specific-sidebar-fill);color:var(--dsw-alias-label-primary)'
+    // A page may override the caption palette while it covers the titlebar
+    // band, e.g. a dimmed full-window overlay; the sidebar palette is the default.
+    probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;'
+      + 'background-color:var(--dsh-windows-caption-fill,var(--dsw-specific-sidebar-fill));'
+      + 'color:var(--dsh-windows-caption-symbol,var(--dsw-alias-label-primary))'
     document.body.append(probe)
     const canvas = document.createElement('canvas')
     canvas.width = canvas.height = 1
@@ -45,7 +49,9 @@ export function syncWindowsAppearance(): void {
       ipcRenderer.send(DESKTOP_IPC.windowsAppearance, ...values)
     }
     const observer = new MutationObserver(send)
-    observer.observe(root, { attributes: true, attributeFilter: ['lang'] })
+    // Every root attribute, not only `lang`: a caption override is usually
+    // switched by a marker attribute on <html>, and `send` drops repeats.
+    observer.observe(root, { attributes: true })
     observer.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme', 'style'] })
     observer.observe(document.head, { childList: true, subtree: true, characterData: true })
     document.head.addEventListener('load', send, true)
