@@ -36,7 +36,7 @@ describe('desktop brand', () => {
   it('renames every product mention in both dictionaries and nothing else', () => {
     const branded = brandMessages(zh, '廊图网小助手')
     expect(branded.quitApplication).toBe('退出 廊图网小助手')
-    expect(branded.updateDetail).toBe('廊图网小助手 {version}\n\n廊图网小助手 将重启以完成更新。')
+    expect(branded.quitTitle).toBe('退出 廊图网小助手？')
     expect(Object.values(branded).join('\n')).not.toContain('DeepSeek Harness')
     expect(branded.application).toBe(zh.application)
     expect(brandMessages(en, DEFAULT_DESKTOP_BRAND.displayName.en)).toBe(en)

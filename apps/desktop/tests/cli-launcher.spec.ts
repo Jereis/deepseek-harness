@@ -8,7 +8,7 @@ import { dirname, join, relative } from 'node:path'
 import { expect, it, onTestFinished } from 'vitest'
 import { prepareDesktopCli } from '../scripts/prepare-cli.ts'
 
-function fixture() {
+function fixture(productName = 'DeepSeek Harness') {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'dsh-cli-launcher-')))
   const children: ChildProcessWithoutNullStreams[] = []
   const exits: Promise<unknown>[] = []
@@ -23,8 +23,8 @@ function fixture() {
   const platform = process.platform === 'win32' ? 'win32' : 'darwin'
   const resources = join(application, ...platform === 'darwin' ? ['Contents', 'Resources'] : ['resources'])
   const cli = join(resources, 'runtime', 'cli')
-  prepareDesktopCli(cli, platform)
-  const electron = join(application, ...platform === 'darwin' ? ['Contents', 'MacOS', 'DeepSeek Harness'] : ['DeepSeek Harness.exe'])
+  prepareDesktopCli(cli, platform, productName)
+  const electron = join(application, ...platform === 'darwin' ? ['Contents', 'MacOS', productName] : [`${productName}.exe`])
   mkdirSync(dirname(electron), { recursive: true })
   if (platform === 'win32') copyFileSync(process.execPath, electron)
   else symlinkSync(process.execPath, electron)
@@ -71,6 +71,14 @@ it('preserves common arguments, cwd, environment, binary input, stderr and exit 
   expect(await run.closed, run.stderr()).toBe(23)
   expect(JSON.parse(run.stdout())).toEqual({ args, cwd: f.root, value: 'kept', nodeMode: '1', input: input.toString('hex') })
   expect(run.stderr()).toBe('separate stderr\n')
+})
+
+it('runs the executable a distribution names through its brand', async () => {
+  const f = fixture('Example Assistant')
+  const run = f.start(['--version'])
+  run.child.stdin.end()
+  expect(await run.closed, run.stderr()).toBe(23)
+  expect(JSON.parse(run.stdout())).toMatchObject({ args: ['--version'], nodeMode: '1' })
 })
 
 it.skipIf(process.platform === 'win32')('resolves chained command symlinks without expanding argument contents', async () => {
