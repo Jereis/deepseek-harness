@@ -50,6 +50,23 @@ describe('desktop brand', () => {
     expect(read.shortcutName).toBe('廊图网小助手')
   })
 
+  it('reads an optional welcome delegate, and none without the member', () => {
+    const welcome = { page: '/api/example/welcome', gate: 'example/welcome-gate' }
+    expect(readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile({ ...LANGTU, welcome }) }).welcome).toEqual(welcome)
+    expect(readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile(LANGTU) })).not.toHaveProperty('welcome')
+    expect(readDesktopBrand({})).not.toHaveProperty('welcome')
+  })
+
+  it.each([
+    ['a welcome page outside the application origin', { welcome: { page: 'https://example.com/welcome', gate: 'example/gate' } }, 'welcome.page'],
+    ['a welcome page with a dot segment', { welcome: { page: '/api/../welcome', gate: 'example/gate' } }, 'welcome.page'],
+    ['a welcome page with a query', { welcome: { page: '/welcome?next=/', gate: 'example/gate' } }, 'welcome.page'],
+    ['a welcome gate without a namespace', { welcome: { page: '/welcome', gate: 'gate' } }, 'welcome.gate'],
+    ['a welcome member that is not an object', { welcome: true }, 'welcome.page'],
+  ])('rejects %s', (_label, override, field) => {
+    expect(() => readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile({ ...LANGTU, ...override }) })).toThrow(field)
+  })
+
   it.each([
     ['a non-ASCII product name, which would name the executable and userData', { productName: '廊图网小助手' }, 'productName'],
     ['a scheme with a colon', { protocolScheme: 'langtu:' }, 'protocolScheme'],

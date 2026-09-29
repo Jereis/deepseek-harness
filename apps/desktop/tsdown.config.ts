@@ -35,12 +35,14 @@ const clientVersionDefine = { 'process.env.DSH_CLIENT_VERSION': JSON.stringify(c
 
 // A distribution's identity (DSH_DESKTOP_BRAND_FILE), compiled into main and every preload.
 const brandDefine = { __DSH_DESKTOP_BRAND__: JSON.stringify(readDesktopBrand().brand) }
+// Its optional welcome delegate (src/welcome-delegate.ts), compiled into main only.
+const welcomeDefine = { __DSH_DESKTOP_WELCOME__: JSON.stringify(readDesktopBrand().welcome ?? null) }
 
 export default defineConfig([
   {
     entry: ['lib/types/main.js'],
     plugins: [packagedImportsPlugin(mainProcessImports)],
-    define: { ...clientVersionDefine, ...brandDefine },
+    define: { ...clientVersionDefine, ...brandDefine, ...welcomeDefine },
     onSuccess: async () => {
       await build({
         configFile: false,

@@ -12,6 +12,11 @@ export const DEFAULT_DESKTOP_BRAND = Object.freeze({
   artifactPrefix: 'deepseek-harness',
 })
 
+/** Application-origin path of a delegated welcome page: absolute, no segment starting with a dot, no query. */
+const WELCOME_PAGE = /^\/(?:[A-Za-z0-9_~-][A-Za-z0-9._~-]*\/?)*$/u
+/** Host `/api` RPC method of a delegated welcome gate, in Connection's `segment/segment` grammar. */
+const WELCOME_GATE = /^[A-Za-z0-9_$.-]+(?:\/[A-Za-z0-9_$.-]+)+$/u
+
 const PATTERNS = {
   productName: /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/u,
   protocolScheme: /^[a-z][a-z0-9+.-]{1,31}$/u,
@@ -22,9 +27,11 @@ const PATTERNS = {
 /**
  * The brand this build uses: DSH_DESKTOP_BRAND_FILE when set, upstream's otherwise.
  * The file is JSON with every `DesktopBrand` field, plus optional `icons.windows` /
- * `icons.macos` (PNG paths relative to the file) and `shortcutName`.
+ * `icons.macos` (PNG paths relative to the file), `shortcutName`, and `welcome`
+ * (`page`: application-origin path the welcome window loads; `gate`: Host `/api` RPC
+ * method answering whether the welcome entry is required; see `src/welcome-delegate.ts`).
  * @param {NodeJS.ProcessEnv} env - build environment.
- * @returns {{ brand: import('../src/brand.ts').DesktopBrand, icons: { windows?: string, macos?: string }, shortcutName?: string }}
+ * @returns {{ brand: import('../src/brand.ts').DesktopBrand, icons: { windows?: string, macos?: string }, shortcutName?: string, welcome?: import('../src/welcome-delegate.ts').DesktopWelcomeDelegate }}
  */
 export function readDesktopBrand(env = process.env) {
   const file = env.DSH_DESKTOP_BRAND_FILE?.trim()
@@ -50,6 +57,13 @@ export function readDesktopBrand(env = process.env) {
     if (typeof icon !== 'string' || !icon.endsWith('.png')) throw fail(`icons.${platform} must be a PNG path`)
     icons[platform] = isAbsolute(icon) ? icon : resolve(dirname(path), icon)
   }
+  let welcome
+  if (value.welcome !== undefined) {
+    const { page, gate } = value.welcome ?? {}
+    if (typeof page !== 'string' || !WELCOME_PAGE.test(page)) throw fail(`welcome.page must be an absolute application path matching ${WELCOME_PAGE}`)
+    if (typeof gate !== 'string' || !WELCOME_GATE.test(gate)) throw fail(`welcome.gate must be an /api RPC method matching ${WELCOME_GATE}`)
+    welcome = Object.freeze({ page, gate })
+  }
   const brand = Object.freeze({
     productName: value.productName,
     displayName: Object.freeze({ en: value.displayName.en, zh: value.displayName.zh }),
@@ -57,5 +71,10 @@ export function readDesktopBrand(env = process.env) {
     homeDirName: value.homeDirName,
     artifactPrefix: value.artifactPrefix,
   })
-  return { brand, icons, ...(value.shortcutName === undefined ? {} : { shortcutName: value.shortcutName }) }
+  return {
+    brand,
+    icons,
+    ...(value.shortcutName === undefined ? {} : { shortcutName: value.shortcutName }),
+    ...(welcome === undefined ? {} : { welcome }),
+  }
 }

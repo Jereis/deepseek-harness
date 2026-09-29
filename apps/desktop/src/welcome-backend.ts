@@ -19,6 +19,11 @@ export interface DesktopWelcomeBackend {
   /** @returns The saved UI language without account or provider requests. */
   readLocalePreference(): Promise<string | null>
   /**
+   * @param gate - Host `/api` RPC method (`segment/segment`) of a distribution's welcome delegate.
+   * @returns Whether the delegate requires the welcome entry.
+   */
+  readGate(gate: string): Promise<boolean>
+  /**
    * @param apiKey - User-entered official provider key.
    * @returns A safe write outcome without provider diagnostics.
    */
@@ -119,6 +124,12 @@ export async function connectDesktopWelcome(
       const settings = await invoke({ namespace: 'settings', method: 'describe', args: {} })
       if (!record(settings) || !Array.isArray(settings.namespaces)) throw new Error('desktop welcome: missing settings namespaces')
       return localePreference(settings.namespaces)
+    },
+    async readGate(gate) {
+      const separator = gate.indexOf('/')
+      const value = await invoke({ namespace: gate.slice(0, separator), method: gate.slice(separator + 1), args: {} })
+      if (!record(value) || typeof value.needsWelcome !== 'boolean') throw new Error('desktop welcome: invalid welcome gate answer')
+      return value.needsWelcome
     },
     async save(apiKey) {
       if (!/^[\x21-\x7e]+$/.test(apiKey)) return { ok: false }

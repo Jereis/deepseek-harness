@@ -4,6 +4,7 @@ import type { SignInAttemptId } from '@deepseek-ai/dsh-deepseek-account/types'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, ipcMain, type BrowserWindowConstructorOptions, type IpcMainInvokeEvent } from 'electron'
+import { SCHEME } from './ipc.ts'
 import type { DesktopLocale } from './locale.ts'
 import { WELCOME_IPC, type WelcomeOperations } from './welcome-api.ts'
 
@@ -54,9 +55,11 @@ let disposeActiveHandlers: (() => void) | undefined
  * Replaces IPC ownership immediately; the caller closes the previous native window.
  * @param locale - shell-owned localized copy.
  * @param operations - credential write and this-launch-only skip actions.
+ * @param page - application-origin path of a distribution's welcome page (`DesktopWelcomeDelegate.page`);
+ * absent, the built-in page loads from the application bundle.
  * @returns the visible window; a failed load destroys it before rejecting.
  */
-export async function openWelcomeWindow(locale: DesktopLocale, operations: WelcomeOperations): Promise<BrowserWindow> {
+export async function openWelcomeWindow(locale: DesktopLocale, operations: WelcomeOperations, page?: string): Promise<BrowserWindow> {
   const window = new BrowserWindow(welcomeWindowOptions(process.platform, locale))
   disposeActiveHandlers?.()
   let active = true
@@ -101,7 +104,8 @@ export async function openWelcomeWindow(locale: DesktopLocale, operations: Welco
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-navigate', (event) => { event.preventDefault() })
   try {
-    await window.loadFile(join(app.getAppPath(), 'renderer', 'welcome.html'))
+    if (page === undefined) await window.loadFile(join(app.getAppPath(), 'renderer', 'welcome.html'))
+    else await window.loadURL(new URL(page, `${SCHEME}://app/`).href)
   } catch (error) {
     disposeHandlers()
     if (!window.isDestroyed()) window.destroy()

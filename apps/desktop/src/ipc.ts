@@ -14,6 +14,7 @@ export const DESKTOP_IPC = {
   shortcutsRecording: 'dsh-desktop:shortcuts-recording',
   boot: 'dsh-desktop:boot',
   enterWorkspace: 'dsh-desktop:enter-workspace',
+  welcomeRecheck: 'dsh-desktop:welcome-recheck',
   onboardingActive: 'dsh-desktop:onboarding-active',
   onboardingApiKey: 'dsh-desktop:onboarding-api-key',
   bootFailed: 'dsh-desktop:boot-failed',
@@ -77,6 +78,14 @@ export interface DshDesktopProductApi {
     status(): Promise<DesktopUpdatePresentation>
     open(): Promise<void>
     subscribe(listener: (state: DesktopUpdatePresentation) => void): () => void
+  }
+  readonly welcome: {
+    /**
+     * Ask the shell to re-read a distribution's welcome gate, such as after its own sign-out.
+     * @returns whether the gate required the welcome entry and the shell returned to it; always
+     * false without a welcome delegate, whose built-in entry follows the account stream instead.
+     */
+    recheck(): Promise<boolean>
   }
 }
 

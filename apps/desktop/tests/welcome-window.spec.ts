@@ -30,6 +30,7 @@ function createWindow() {
       on: vi.fn<(name: string, handler: (event: { preventDefault(): void }) => void) => void>(),
     },
     loadFile: vi.fn<(path: string) => Promise<undefined>>().mockResolvedValue(undefined),
+    loadURL: vi.fn<(url: string) => Promise<undefined>>().mockResolvedValue(undefined),
     isDestroyed: vi.fn().mockReturnValue(false),
     destroy: vi.fn(),
     show: vi.fn(),
@@ -88,6 +89,18 @@ describe('desktop welcome window', () => {
     expect(event.preventDefault).toHaveBeenCalledOnce()
     loaded.resolve(undefined)
     expect(await opening).toBe(window)
+    expect(window.show).toHaveBeenCalledOnce()
+  })
+
+  it('loads a delegated application-origin page instead of the local document', async () => {
+    const window = createWindow()
+    electron.create.mockReturnValue(window)
+    expect(await openWelcomeWindow(resolveDesktopLocale('en'), operations, '/api/example/welcome')).toBe(window)
+    expect(window.loadURL).toHaveBeenCalledExactlyOnceWith('dsh-app://app/api/example/welcome')
+    expect(window.loadFile).not.toHaveBeenCalled()
+    const event = { preventDefault: vi.fn() }
+    window.webContents.on.mock.calls[0]![1](event)
+    expect(event.preventDefault).toHaveBeenCalledOnce()
     expect(window.show).toHaveBeenCalledOnce()
   })
 

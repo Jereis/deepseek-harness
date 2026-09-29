@@ -40,6 +40,7 @@ import { pruneCrashReports, RendererConsoleTail, writeCrashReport, type CrashRep
 import { openWelcomeWindow } from './welcome-window.ts'
 import { WELCOME_IPC, needsWelcome, type WelcomeNotice } from './welcome-api.ts'
 import { connectDesktopWelcome, type DesktopWelcomeBackend } from './welcome-backend.ts'
+import { DESKTOP_WELCOME_DELEGATE } from './welcome-delegate.ts'
 import { DesktopUpdateJournal } from './update-journal.ts'
 import { DesktopUpdatePreparationError } from './update-error.ts'
 import { DesktopUpdateSchedule, resolveDesktopUpdateScheduleConfig } from './update-schedule.ts'
@@ -442,8 +443,8 @@ async function main(): Promise<void> {
           }
           if (state.status === 'credential-stored' && attempt?.phase === 'succeeded' && welcomeWindow !== undefined) void enterWorkspace({ activate: false }).catch(() => undefined)
           if (previousAccountStatus === 'credential-stored' && state.status === 'signed-out') {
-            void readWelcomeState().then(async (value) => {
-              if (needsWelcome(value) && !quitting) {
+            void welcomeRequired().then(async (required) => {
+              if (required && !quitting) {
                 enteredWorkspace = false
                 await showWelcome()
                 if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) welcomeWindow.webContents.send(WELCOME_IPC.state, state)
@@ -455,8 +456,8 @@ async function main(): Promise<void> {
         }, () => {
           // The stream reconnects; a transport failure does not change account state.
         }, () => {
-          void readWelcomeState().then(async (value) => {
-            if (!needsWelcome(value) || quitting) return
+          void welcomeRequired().then(async (required) => {
+            if (!required || quitting) return
             pendingWelcomeNotice = 'session-expired'
             enteredWorkspace = false
             await showWelcome()
@@ -530,6 +531,12 @@ async function main(): Promise<void> {
   const readWelcomeState = async () => {
     if (backend.host === undefined || welcomeBackend === undefined) throw new Error('desktop welcome: backend unavailable')
     return welcomeBackend.read()
+  }
+  // A distribution's welcome delegate replaces the account and API-key facts with its own gate.
+  const welcomeRequired = async (): Promise<boolean> => {
+    if (DESKTOP_WELCOME_DELEGATE === undefined) return needsWelcome(await readWelcomeState())
+    if (backend.host === undefined || welcomeBackend === undefined) throw new Error('desktop welcome: backend unavailable')
+    return welcomeBackend.readGate(DESKTOP_WELCOME_DELEGATE.gate)
   }
   stopForRecovery = () => backend.close()
 
@@ -733,6 +740,13 @@ async function main(): Promise<void> {
   ipcMain.handle(DESKTOP_IPC.onboardingApiKey, async (event) => {
     assertProductSender(event)
     return (await readWelcomeState()).hasApiKey
+  })
+  ipcMain.handle(DESKTOP_IPC.welcomeRecheck, async (event) => {
+    assertProductSender(event)
+    if (DESKTOP_WELCOME_DELEGATE === undefined || quitting || !await welcomeRequired() || quitting) return false
+    enteredWorkspace = false
+    await showWelcome()
+    return true
   })
   ipcMain.on(DESKTOP_IPC.onboardingActive, (event, active: unknown) => {
     const window = mainWindow
@@ -1124,7 +1138,7 @@ async function main(): Promise<void> {
           return { ok: true }
         },
         skip: enterWorkspace,
-      })
+      }, DESKTOP_WELCOME_DELEGATE?.page)
       const window = welcomeWindow
       window.once('closed', () => {
         void welcomeBackend?.account.state().then((state) => {
@@ -1148,11 +1162,14 @@ async function main(): Promise<void> {
   const openInitialWindow = async (): Promise<void> => {
     if (quitting || recovery.active) return
     const state = await readWelcomeState()
+    const required = DESKTOP_WELCOME_DELEGATE === undefined
+      ? needsWelcome({ loggedIn: state.loggedIn, hasApiKey: state.hasApiKey })
+      : await welcomeRequired()
     if (isQuitting() || backend.state.phase !== 'ready') return
     locale = resolveDesktopStartupLocale(state.localePreference, systemLanguages)
     windowsLanguage = locale.id
     refreshApplicationMenu()
-    if (!enteredWorkspace && needsWelcome({ loggedIn: state.loggedIn, hasApiKey: state.hasApiKey })) {
+    if (!enteredWorkspace && required) {
       // A later login must retain its own activation policy instead of replaying startup focus.
       raiseAfterUpdate = false
       await showWelcome()

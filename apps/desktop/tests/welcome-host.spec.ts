@@ -2,6 +2,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { connectDesktopWelcome } from '../src/welcome-backend.ts'
 
+const gate: { value: unknown } = { value: { needsWelcome: true } }
+
 function transport(preference?: string) {
   const keys = new Map<string, string>()
   const namespaces = [
@@ -19,6 +21,7 @@ function transport(preference?: string) {
     let value: unknown
     if (method === 'account/getState') value = { links: { usageUrl: 'http://localhost/usage', topUpUrl: 'http://localhost/top_up' }, status: 'signed-out', attempt: null }
     else if (method === 'settings/describe') value = { namespaces }
+    else if (method === 'example/welcome-gate') value = gate.value
     else if (method === 'llm/listConfigurableProviders') value = [{ settingsNs: 'llm-pi-ai', settingsPath: ['profiles', 'example'] }]
     else if (method === 'credentials/set') keys.set(payload.args.ref, payload.args.value)
     else value = Object.fromEntries(payload.args.refs.map(ref => [ref, { configured: keys.has(ref), writable: true }]))
@@ -88,6 +91,20 @@ describe('desktop welcome Web operations', () => {
     expect(await backend.save('sk-example')).toEqual({ ok: false })
     host.send.mockResolvedValueOnce(Response.json({ type: 'server-response', rpcId: 'other', result: { ok: true } }))
     await expect(backend.read()).rejects.toThrow('Web RPC failed')
+  })
+
+  it('reads a delegated welcome gate through the same authenticated RPC', async () => {
+    const host = transport()
+    const backend = await connectDesktopWelcome(url, host.send)
+    gate.value = { needsWelcome: true }
+    expect(await backend.readGate('example/welcome-gate')).toBe(true)
+    gate.value = { needsWelcome: false }
+    expect(await backend.readGate('example/welcome-gate')).toBe(false)
+    const [input, init] = host.send.mock.calls.at(-1)!
+    expect(input).toBe('http://127.0.0.1:19387/api/example/welcome-gate')
+    expect(JSON.parse(init!.body as string)).toMatchObject({ type: 'client-request', method: 'example/welcome-gate' })
+    gate.value = { needsWelcome: 'yes' }
+    await expect(backend.readGate('example/welcome-gate')).rejects.toThrow('invalid welcome gate answer')
   })
 
   it('refuses an unauthenticated Web launch', async () => {
