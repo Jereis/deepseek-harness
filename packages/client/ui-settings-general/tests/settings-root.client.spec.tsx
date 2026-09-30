@@ -368,6 +368,13 @@ describe('SettingsPanel navigation', () => {
     expect(screen.getByTestId('section-general')).toBeTruthy()
   })
 
+  it('anchors each nav cell by its section id', () => {
+    mount()
+    openPanel()
+    expect(screen.getByRole('button', { name: 'General' }).getAttribute('data-settings-section')).toBe('general')
+    expect(screen.getByRole('button', { name: 'Models' }).getAttribute('data-settings-section')).toBe('models')
+  })
+
   it('gives every section a nav glyph, distinct for the ids the shell knows', () => {
     mount({
       rows: [
