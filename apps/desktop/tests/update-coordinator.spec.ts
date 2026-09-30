@@ -73,6 +73,17 @@ function fixture() {
 }
 
 describe('desktop update coordinator', () => {
+  it('reports whether the process has an update source, which a check cannot succeed without', async () => {
+    expect(fixture().coordinator.supported).toBe(true)
+    const states: DesktopUpdateState[] = []
+    const unsourced = new DesktopUpdateCoordinator(
+      (state) => { states.push(state); return state }, async () => true, fixture().updater, () => false, () => '1.0.0',
+    )
+    coordinators.push(unsourced)
+    expect(unsourced.supported).toBe(false)
+    await expect(unsourced.check()).resolves.toMatchObject({ phase: 'error', failedOperation: 'check' })
+  })
+
   it('keeps safe preparation diagnostics separate and clears them on an explicit retry', async () => {
     const f = fixture()
     await f.coordinator.check()

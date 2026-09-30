@@ -51,6 +51,7 @@ const harness = await vi.hoisted(async () => {
   let embeddedPolicy: unknown
   let closeWindowsOnQuit = false
   let updateState: DesktopUpdateState = { phase: 'idle' }
+  let updateSupported = true
   let platformDisposeDeferred: ReturnType<typeof deferred> | undefined
   // The native Platform view owns persistent browser storage; Desktop startup tests replace it so
   // each quit can control when that cleanup settles.
@@ -211,6 +212,8 @@ const harness = await vi.hoisted(async () => {
     ipcOn: vi.fn<(channel: string, listener: (event: { sender: unknown; senderFrame: unknown }, ...args: unknown[]) => void) => void>(),
     get updateState() { return updateState },
     set updateState(value: DesktopUpdateState) { updateState = value },
+    get updateSupported() { return updateSupported },
+    set updateSupported(value: boolean) { updateSupported = value },
     get prepareUpdate() { return prepareUpdate! },
     set prepareUpdate(value: () => Promise<boolean>) { prepareUpdate = value },
     get publishUpdate() { return publishUpdate! },
@@ -250,6 +253,7 @@ const harness = await vi.hoisted(async () => {
       prepareUpdate = undefined
       publishUpdate = undefined
       updateState = { phase: 'idle' }
+      updateSupported = true
       updateCheck.mockReset().mockImplementation(async () => updateState)
       loginShell.mockReset().mockImplementation(base => readLoginShell(base))
       updateDownload.mockReset().mockImplementation(async () => updateState)
@@ -344,6 +348,7 @@ vi.mock('../src/update-coordinator.ts', () => ({ DesktopUpdateCoordinator: class
     harness.publishUpdate = publish
   }
   get state() { return harness.updateState }
+  get supported() { return harness.updateSupported }
   readonly check = harness.updateCheck
   readonly download = harness.updateDownload
   readonly install = harness.updateInstall
@@ -885,6 +890,16 @@ describe('desktop main startup', () => {
       ? ['about', 'separator', en.checkUpdatesMenu, en.cliCommandMenu, 'separator', 'hide', 'hideOthers', 'unhide', 'separator', 'quit']
       : ['about', 'separator', en.checkUpdatesMenu, 'separator', 'quit'])
     expect(harness.menu.setApplicationMenu).toHaveBeenCalledOnce()
+  })
+
+  it('offers no update check from a process that has no update source', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+    harness.updateSupported = false
+    await import('../src/main.ts')
+    await harness.preparing.promise
+    const labels = applicationMenuItems().map(item => item.label)
+    expect(labels).not.toContain(en.checkUpdatesMenu)
+    expect(labels).toContain(en.cliCommandMenu)
   })
 
   it.each(['en-US', 'zh-CN'])('localizes macOS application commands without changing the application name (%s)', async (locale) => {

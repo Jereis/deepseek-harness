@@ -12,6 +12,16 @@ export interface DesktopBrand {
   readonly homeDirName: string
   /** Lower-case prefix of release artifact file names. */
   readonly artifactPrefix: string
+  /**
+   * Version shown to people in place of the application's own, for a distribution
+   * that numbers its releases itself. Display only: updates still compare `app.getVersion()`.
+   */
+  readonly version?: string
+  /**
+   * Whether the application menu offers the command-line manager to people who
+   * installed the product. `false` keeps it to development builds.
+   */
+  readonly cliCommandMenu?: boolean
 }
 
 /** Upstream's identity; `scripts/desktop-brand.mjs` restates it for the build configuration. */

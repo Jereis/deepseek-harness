@@ -391,7 +391,7 @@ async function main(): Promise<void> {
   // chrome and its content never mix languages.
   const showAbout = async (): Promise<void> => {
     await ordinaryMessageBox({ type: 'info', title: locale.messages.aboutMenu, message: locale.messages.aboutProduct,
-      detail: formatDesktopMessage(locale.messages.aboutVersion, { version: app.getVersion() }),
+      detail: formatDesktopMessage(locale.messages.aboutVersion, { version: DESKTOP_BRAND.version ?? app.getVersion() }),
       buttons: [locale.messages.updateAcknowledge], cancelId: 0 })
   }
   const commandManager = new DesktopCommandManager({
@@ -851,7 +851,7 @@ async function main(): Promise<void> {
         if (state.phase === 'idle') {
           await ordinaryMessageBox({ type: 'info', title: locale.messages.updateCheckTitle,
             message: locale.messages.updateCurrent,
-            detail: formatDesktopMessage(locale.messages.updateCurrentDetail, { version: app.getVersion() }) })
+            detail: formatDesktopMessage(locale.messages.updateCurrentDetail, { version: DESKTOP_BRAND.version ?? app.getVersion() }) })
           return
         }
         if (state.phase === 'ready' || (state.phase === 'error' && state.failedOperation === 'install')) {
@@ -949,7 +949,7 @@ async function main(): Promise<void> {
     : join(process.resourcesPath, 'icon.png')
   app.setAboutPanelOptions({
     applicationName: currentDesktopLocale().messages.aboutProduct,
-    applicationVersion: app.getVersion(),
+    applicationVersion: DESKTOP_BRAND.version ?? app.getVersion(),
     // The release has no separate build number; omit Electron's bundle version.
     version: '',
     copyright: '',
@@ -975,8 +975,11 @@ async function main(): Promise<void> {
         click: () => { void showAbout().catch((error: unknown) => { console.error(error) }) } }
       : { label: currentDesktopLocale().messages.aboutMenu, role: 'about' },
     { type: 'separator' },
-    { label: currentDesktopLocale().messages.checkUpdatesMenu, click: () => { void openUpdatePrompt(true) } },
-    ...process.platform === 'darwin' || process.platform === 'win32'
+    // A process without an update source (a development run, a build published
+    // nowhere) has nothing to check, so it does not offer a check that can only fail.
+    ...updates.supported === false
+      ? [] : [{ label: currentDesktopLocale().messages.checkUpdatesMenu, click: () => { void openUpdatePrompt(true) } }],
+    ...(process.platform === 'darwin' || process.platform === 'win32') && (DESKTOP_BRAND.cliCommandMenu !== false || development)
       ? [{ label: currentDesktopLocale().messages.cliCommandMenu, click: () => { void commandManager.show() } }] : [],
     ...development ? [
       { type: 'separator' as const },

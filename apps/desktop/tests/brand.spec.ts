@@ -50,6 +50,16 @@ describe('desktop brand', () => {
     expect(read.shortcutName).toBe('廊图网小助手')
   })
 
+  it('reads the optional menu and displayed-version members, and neither by default', () => {
+    const file = brandFile({ ...LANGTU, cliCommandMenu: false })
+    expect(readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: file }).brand).toEqual({ ...LANGTU, cliCommandMenu: false })
+    expect(readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: file, DSH_DESKTOP_DISPLAY_VERSION: ' 1.0.0 ' }).brand)
+      .toEqual({ ...LANGTU, cliCommandMenu: false, version: '1.0.0' })
+    expect(readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile(LANGTU) }).brand).toEqual(LANGTU)
+    expect(() => readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: file, DSH_DESKTOP_DISPLAY_VERSION: 'V1.0.0' })).toThrow('DSH_DESKTOP_DISPLAY_VERSION')
+    expect(() => readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile({ ...LANGTU, cliCommandMenu: 'no' }) })).toThrow('cliCommandMenu')
+  })
+
   it('reads an optional welcome delegate, and none without the member', () => {
     const welcome = { page: '/api/example/welcome', gate: 'example/welcome-gate' }
     expect(readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile({ ...LANGTU, welcome }) }).welcome).toEqual(welcome)

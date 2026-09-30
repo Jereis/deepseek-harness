@@ -2,6 +2,7 @@
 
 import { readFileSync } from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
+import { valid } from 'semver'
 
 /** Upstream's identity; the same values as `DEFAULT_DESKTOP_BRAND` in `src/brand.ts`. */
 export const DEFAULT_DESKTOP_BRAND = Object.freeze({
@@ -29,7 +30,9 @@ const PATTERNS = {
  * The file is JSON with every `DesktopBrand` field, plus optional `icons.windows` /
  * `icons.macos` (PNG paths relative to the file), `shortcutName`, and `welcome`
  * (`page`: application-origin path the welcome window loads; `gate`: Host `/api` RPC
- * method answering whether the welcome entry is required; see `src/welcome-delegate.ts`).
+ * method answering whether the welcome entry is required; see `src/welcome-delegate.ts`),
+ * and `cliCommandMenu` (`false` keeps the command-line manager out of installed builds' menu).
+ * DSH_DESKTOP_DISPLAY_VERSION, a semantic version, becomes the brand's displayed `version`.
  * @param {NodeJS.ProcessEnv} env - build environment.
  * @returns {{ brand: import('../src/brand.ts').DesktopBrand, icons: { windows?: string, macos?: string }, shortcutName?: string, welcome?: import('../src/welcome-delegate.ts').DesktopWelcomeDelegate }}
  */
@@ -64,12 +67,17 @@ export function readDesktopBrand(env = process.env) {
     if (typeof gate !== 'string' || !WELCOME_GATE.test(gate)) throw fail(`welcome.gate must be an /api RPC method matching ${WELCOME_GATE}`)
     welcome = Object.freeze({ page, gate })
   }
+  if (value.cliCommandMenu !== undefined && typeof value.cliCommandMenu !== 'boolean') throw fail('cliCommandMenu must be a boolean')
+  const version = env.DSH_DESKTOP_DISPLAY_VERSION?.trim()
+  if (version && valid(version) === null) throw new Error('desktop brand: DSH_DESKTOP_DISPLAY_VERSION must be a semantic version')
   const brand = Object.freeze({
     productName: value.productName,
     displayName: Object.freeze({ en: value.displayName.en, zh: value.displayName.zh }),
     protocolScheme: value.protocolScheme,
     homeDirName: value.homeDirName,
     artifactPrefix: value.artifactPrefix,
+    ...(version ? { version } : {}),
+    ...(value.cliCommandMenu === undefined ? {} : { cliCommandMenu: value.cliCommandMenu }),
   })
   return {
     brand,
