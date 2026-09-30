@@ -46,7 +46,7 @@ it('invalidates payload identity for shared wheels, package versions and package
   expect(primaryRuntimePayloadDigest('mac-arm64', lock, '11.7.1')).not.toBe(original)
 })
 
-const extraWheel = (file: string): { url: string, sha256: string } => ({ url: `https://files.example/${file}`, sha256: 'b'.repeat(64) })
+const extraWheel = (file: string): { url: string; sha256: string } => ({ url: `https://files.example/${file}`, sha256: 'b'.repeat(64) })
 const extraLock: PrimaryRuntimeExtraLock = {
   wheels: [extraWheel('sample_pure-1.0-py3-none-any.whl')],
   pythonPackages: { 'sample-pure': '1.0' },

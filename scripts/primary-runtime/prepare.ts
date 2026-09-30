@@ -161,7 +161,7 @@ export function mergePrimaryRuntimeLock(
  * @returns The parsed lock; its contents are checked when merged.
  */
 export function readPrimaryRuntimeExtraLock(path: string): PrimaryRuntimeExtraLock {
-  const value = JSON.parse(readFileSync(path, 'utf8')) as Partial<PrimaryRuntimeExtraLock> | null
+  const value = JSON.parse(readFileSync(path, 'utf8')) as { wheels?: unknown; pythonPackages?: unknown; targets?: unknown } | null
   if (typeof value !== 'object' || value === null || !Array.isArray(value.wheels)
     || typeof value.pythonPackages !== 'object' || value.pythonPackages === null
     || typeof value.targets !== 'object' || value.targets === null) {
@@ -194,7 +194,8 @@ export interface PreparePrimaryRuntimeOptions {
 export async function preparePrimaryRuntime(options: PreparePrimaryRuntimeOptions): Promise<void> {
   const { target } = options
   const paths = { runtime: resolve(options.output), downloads: resolve(options.cache) }
-  const runtimeLock = options.extraLock === undefined ? lock : mergePrimaryRuntimeLock(target, readPrimaryRuntimeExtraLock(options.extraLock))
+  const runtimeLock = options.extraLock === undefined ? lock
+    : mergePrimaryRuntimeLock(target, readPrimaryRuntimeExtraLock(options.extraLock))
   const artifact = runtimeLock.targets[target]
   mkdirSync(paths.runtime, { recursive: true })
   mkdirSync(paths.downloads, { recursive: true })

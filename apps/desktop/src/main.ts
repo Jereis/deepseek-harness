@@ -792,7 +792,9 @@ async function main(): Promise<void> {
   })
   ipcMain.handle(DESKTOP_IPC.welcomeRecheck, async (event) => {
     assertProductSender(event)
-    if (DESKTOP_WELCOME_DELEGATE === undefined || quitting || !await welcomeRequired() || quitting) return false
+    if (DESKTOP_WELCOME_DELEGATE === undefined || quitting || !await welcomeRequired()) return false
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- A quit can begin while the gate is read.
+    if (quitting) return false
     enteredWorkspace = false
     await showWelcome()
     return true

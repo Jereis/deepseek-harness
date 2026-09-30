@@ -84,7 +84,7 @@ describe('desktop development project', () => {
     // Development dependencies stay behind: the bundle must resolve its peers from this runtime.
     expect(() => readFileSync(join(copied, 'node_modules/dev-only/index.js'))).toThrow()
     expect(() => readFileSync(join(copied, 'src/index.ts'))).toThrow()
-    const manifest = JSON.parse(readFileSync(join(project, 'package.json'), 'utf8')) as { dsh: { carrier: { bundles: string[] }, profile: unknown } }
+    const manifest = JSON.parse(readFileSync(join(project, 'package.json'), 'utf8')) as { dsh: { carrier: { bundles: string[] }; profile: unknown } }
     expect(manifest.dsh.carrier.bundles).toEqual(['@acme/carried'])
     expect(manifest.dsh.profile).toBeDefined()
   })

@@ -88,7 +88,10 @@ describe('desktop brand', () => {
       DSH_DESKTOP_TARGET_ARCH: 'x64',
       DSH_DESKTOP_UNSIGNED: '1',
     }, 'win32', 'x64') as unknown as {
-      productName: string, protocols: { name: string, schemes: string[] }[], artifactName: string, nsis: { shortcutName?: string }
+      productName: string
+      protocols: { name: string; schemes: string[] }[]
+      artifactName: string
+      nsis: { shortcutName?: string }
     }
     expect(config.productName).toBe('LangtuAssistant')
     expect(config.protocols).toEqual([{ name: 'Langtu Assistant', schemes: ['langtu'] }])
