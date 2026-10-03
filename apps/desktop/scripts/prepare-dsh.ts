@@ -18,6 +18,12 @@ import {
   verifyDesktopCoreLockfile,
 } from '../src/core-package-set.ts'
 import { smokePrimaryRuntime } from './prepare-primary-runtime.ts'
+import {
+  resolveDesktopCarrierPackages,
+  stageDesktopCarrierPackages,
+  verifyDesktopCarrierPackages,
+  type DesktopCarrierPackage,
+} from './desktop-carrier-packages.ts'
 import { smokePreparedRuntime } from './smoke-prepared-runtime.ts'
 import { prepareRuntimeManifests } from './prepare-runtime-manifests.ts'
 import { writeDesktopRuntime, verifyDesktopRuntime } from '../src/runtime-tree.ts'
@@ -117,10 +123,14 @@ async function main(): Promise<void> {
       mkdirSync(STORE_ROOT, { recursive: true })
     })
     const release = desktopRelease()
+    const carrierTarballs = resolveDesktopCarrierPackages(process.env)
+    let carriers: DesktopCarrierPackage[] = []
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:stage-packages', async () => {
       copyFileSync(join(PACKAGE_SET_ROOT, DESKTOP_PACKAGE_SET_FILE), join(BUILD_ROOT, DESKTOP_PACKAGE_SET_FILE))
       cpSync(join(PACKAGE_SET_ROOT, DESKTOP_PACKAGES_DIR), join(BUILD_ROOT, DESKTOP_PACKAGES_DIR), { recursive: true })
       createRuntimeProjectMetadata(BUILD_ROOT, release)
+      carriers = stageDesktopCarrierPackages(BUILD_ROOT, carrierTarballs,
+        new Set(readDesktopCorePackageSet(BUILD_ROOT, release.version).packages.map(entry => entry.name)))
     })
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:lockfile', () => runPnpm(['install', '--lockfile-only']))
     verifyDesktopCoreLockfile(
@@ -144,7 +154,10 @@ async function main(): Promise<void> {
     writeFileSync(join(DSH_OUTPUT_ROOT, 'package.json'), `${JSON.stringify({
       name: '@deepseek-ai/dsh-desktop-runtime', private: true, version: release.version, type: 'module',
       dependencies: Object.fromEntries(packageSet.packages.map(entry => [entry.name, entry.version])),
+      // The Desktop Host loads these after the profile's bundles (readCarrierBundles in apps/desktop-host).
+      ...carriers.length === 0 ? {} : { dsh: { carrier: { bundles: carriers.map(carrier => carrier.name) } } },
     }, undefined, 2)}\n`)
+    verifyDesktopCarrierPackages(DSH_OUTPUT_ROOT, carriers)
     for (const file of DESKTOP_HOST_RUNTIME_FILES) {
       if (!existsSync(join(DSH_OUTPUT_ROOT, 'node_modules', DESKTOP_HOST_PACKAGE, file))) {
         throw new Error(`desktop runtime: missing private Host file ${file}`)

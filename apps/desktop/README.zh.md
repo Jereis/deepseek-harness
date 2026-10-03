@@ -235,6 +235,8 @@ macOS arm64 命令要求 Apple Silicon。macOS x64 命令可以在 Intel macOS �
 
 每个目标都在 `apps/desktop/.desktop-build/targets/<target>/` 下持有自己的打包输入、已准备运行时、包集合、dsh 依赖树、pnpm 准备状态、未打包应用、更新元数据和最终产物。Electron 归档缓存继续由 `.desktop-build/downloads` 共享，因为每个归档文件名都包含版本、平台和架构，并且在解包前经过验证。目标构建绝不读取其他目标的可变准备状态。
 
+下游发行版可以把自己的 bundle 随运行时一起发布。`DSH_DESKTOP_CARRIER_PACKAGES` 按加载顺序列出打包好的 `.tgz` 包，分隔方式与 `PATH` 相同；每个包的 manifest 必须声明 `dsh.bundle`，且不能是核心包。`prepare:dsh` 把它们加为运行时项目的依赖，因此它们自己的依赖会一并安装，`@deepseek-ai/*` 依赖与 peer 解析到核心包集合；随后把包名写入运行时 `package.json` 的 `dsh.carrier.bundles`。Desktop Host 在 profile 自身的 bundle 之后加载它们，与开发模式携带 `DSH_DESKTOP_CARRIER_BUNDLES` 目录的方式相同；运行时文件清单与 Host 冒烟检查同样覆盖它们。该变量从打包环境读取，不从目标平台的 dotenv 文件读取。
+
 ### 运行时文件筛选
 
 Desktop 在本地打包工作区包，并通过目标捆绑的 Node 和 pnpm 安装外部依赖。[Desktop 文件策略](scripts/runtime-file-policy.ts)随后在签名和完整性封装前过滤不可变的 `resources/app.asar/dsh/node_modules` 副本。它排除 TypeScript 声明、已识别的 JavaScript/CSS/TypeScript source map、TypeScript 构建缓存、Domino 测试目录、选定的原生编译器输出和其他平台的 node-pty 预构建文件。它保留运行时 JavaScript、原生模块及其 DLL/EXE 辅助文件、WASM、未知资源、许可证和 notices。依赖清单在完整性封装前经过 electron-builder 的元数据清理，确保归档保持已记录的字节。该策略不修改 npm tarball、捆绑的包管理器或用户安装的插件文件。
