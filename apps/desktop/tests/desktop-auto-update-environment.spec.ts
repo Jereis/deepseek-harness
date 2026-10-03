@@ -5,6 +5,7 @@ import {
   resolveDesktopAutoUpdateConfig,
   resolveDesktopAutoUpdateEnvironment,
   resolveDesktopAutoUpdateTarget,
+  resolveDesktopUnsignedUpdates,
   resolveDesktopUploadConfig,
 } from '../scripts/desktop-auto-update-environment.mjs'
 
@@ -76,6 +77,49 @@ describe('desktop auto-update environment', () => {
       secretIdEnvName: 'DOWNLOAD_PROD_COS_SECRET_ID',
       secretKeyEnvName: 'DOWNLOAD_PROD_COS_SECRET_KEY',
     })
+  })
+
+  it.each([undefined, '', ' '])('defaults the production origin when DOWNLOAD_PROD_ORIGIN is %j', (origin) => {
+    expect(resolveDesktopAutoUpdateConfig({ DSH_DESKTOP_AUTO_UPDATE_ENV: 'production', DOWNLOAD_PROD_ORIGIN: origin },
+      'win32', 'x64').publicUrl).toBe('https://download.deepseek.com/dsh-desk/feeds/win-x64/')
+  })
+
+  it('publishes production feeds and binaries under a configured origin', () => {
+    expect(resolveDesktopAutoUpdateConfig({
+      DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
+      DOWNLOAD_PROD_ORIGIN: ' https://downloads.example.com/ ',
+    }, 'win32', 'x64')).toMatchObject({
+      environment: 'production',
+      origin: 'https://downloads.example.com',
+      publicUrl: 'https://downloads.example.com/dsh-desk/feeds/win-x64/',
+      binaryKeyPrefix: 'dsh-desk/bin/win-x64',
+    })
+  })
+
+  it.each(['https://downloads.example.com/releases', 'http://downloads.example.com', 'https://user@downloads.example.com',
+    'downloads.example.com'])('rejects production origin %s', (origin) => {
+    expect(() => resolveDesktopAutoUpdateConfig({ DSH_DESKTOP_AUTO_UPDATE_ENV: 'production', DOWNLOAD_PROD_ORIGIN: origin },
+      'win32', 'x64')).toThrow(/DOWNLOAD_PROD_ORIGIN must be an absolute HTTPS origin/u)
+  })
+
+  it.each([undefined, '', '0'])('keeps unsigned packages without a feed when DSH_DESKTOP_UNSIGNED_UPDATES is %j', (value) => {
+    expect(resolveDesktopUnsignedUpdates({ DSH_DESKTOP_AUTO_UPDATE_ENV: 'production', DSH_DESKTOP_UNSIGNED_UPDATES: value })).toBe(false)
+  })
+
+  it('gives unsigned packages a test feed or a production feed under a distribution origin', () => {
+    expect(resolveDesktopUnsignedUpdates({ DSH_DESKTOP_UNSIGNED_UPDATES: '1' })).toBe(true)
+    expect(resolveDesktopUnsignedUpdates({ DSH_DESKTOP_AUTO_UPDATE_ENV: 'production', DSH_DESKTOP_UNSIGNED_UPDATES: ' 1 ',
+      DOWNLOAD_PROD_ORIGIN: 'https://downloads.example.com' })).toBe(true)
+  })
+
+  it.each([undefined, ' ', 'https://download.deepseek.com', 'https://download.deepseek.com/'])(
+    'refuses unsigned production updates under origin %j', (origin) => {
+      expect(() => resolveDesktopUnsignedUpdates({ DSH_DESKTOP_AUTO_UPDATE_ENV: 'production', DSH_DESKTOP_UNSIGNED_UPDATES: '1',
+        DOWNLOAD_PROD_ORIGIN: origin })).toThrow(/requires a DOWNLOAD_PROD_ORIGIN other than https:\/\/download\.deepseek\.com/u)
+    })
+
+  it.each(['true', 'yes', '2'])('rejects DSH_DESKTOP_UNSIGNED_UPDATES %s', (value) => {
+    expect(() => resolveDesktopUnsignedUpdates({ DSH_DESKTOP_UNSIGNED_UPDATES: value })).toThrow(/must be 0 or 1/u)
   })
 
   it('requires the selected deployment origin for packages and bucket only for uploads', () => {

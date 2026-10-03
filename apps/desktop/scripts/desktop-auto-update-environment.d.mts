@@ -62,6 +62,17 @@ export function desktopUpdateMetadataFilename(
   platform: NodeJS.Platform,
 ): string
 
+/** Environment variable that lets an unsigned Windows package carry an update feed. */
+export const DESKTOP_UNSIGNED_UPDATES_ENV: 'DSH_DESKTOP_UNSIGNED_UPDATES'
+
+/**
+ * Resolve whether an unsigned package publishes an update feed.
+ * @param env - Packaging environment.
+ * @returns Whether an unsigned package receives the selected deployment's update feed.
+ * @throws When the value is not `0` or `1`, or production would use upstream's origin.
+ */
+export function resolveDesktopUnsignedUpdates(env: NodeJS.ProcessEnv): boolean
+
 /**
  * Resolve the public updater URL and object prefixes for one release target.
  * @param env - Packaging or upload environment.

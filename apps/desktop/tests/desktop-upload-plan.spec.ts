@@ -38,6 +38,7 @@ async function fixture(
   target: DesktopPackageTargetName,
   version = '1.2.3',
   environment: 'test' | 'production' = 'test',
+  options: { readonly artifactPrefix?: string; readonly unsigned?: boolean } = {},
 ): Promise<Fixture> {
   const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-upload-'))
   temporaryDirectories.push(root)
@@ -49,7 +50,7 @@ async function fixture(
   await writeFile(join(appRoot, 'package.json'), `${JSON.stringify({ version })}\n`)
 
   const [os, arch] = target.split('-') as ['mac' | 'win', 'arm64' | 'x64']
-  const base = `deepseek-harness-${version}-${os}-${arch}`
+  const base = `${options.artifactPrefix ?? 'deepseek-harness'}-${version}-${os}-${arch}${options.unsigned ? '-unsigned' : ''}`
   const origin = environment === 'test'
     ? TEST_ORIGIN
     : 'https://download.deepseek.com'
@@ -59,6 +60,7 @@ async function fixture(
     version,
     environment,
     publicUrl: `${origin}/dsh-desk/${environment === 'test' ? `${RELEASE_ID}/` : ''}feeds/${target}/`,
+    ...options.unsigned ? { unsigned: true } : {},
   })}\n`)
 
   if (os === 'mac') {
@@ -87,21 +89,29 @@ async function fixture(
       }],
     })}\n`)
   }
+  const brandFile = join(root, 'brand.json')
+  if (options.artifactPrefix !== undefined) {
+    await writeFile(brandFile, `${JSON.stringify({ productName: 'Example Desktop', displayName: { en: 'Example', zh: 'Example' },
+      protocolScheme: 'example', homeDirName: '.example', artifactPrefix: options.artifactPrefix })}\n`)
+  }
   return {
     repositoryRoot,
     appRoot,
     artifactsRoot,
-    environment: environment === 'test'
-      ? {
-        DSH_DESKTOP_AUTO_UPDATE_ENV: 'test',
-        DOWNLOAD_TEST_ORIGIN: TEST_ORIGIN,
-        DOWNLOAD_TEST_RELEASE_ID: RELEASE_ID,
-        DOWNLOAD_TEST_COS_BUCKET: TEST_BUCKET,
-      }
-      : {
-        DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
-        DOWNLOAD_PROD_COS_BUCKET: PRODUCTION_BUCKET,
-      },
+    environment: {
+      ...environment === 'test'
+        ? {
+          DSH_DESKTOP_AUTO_UPDATE_ENV: 'test',
+          DOWNLOAD_TEST_ORIGIN: TEST_ORIGIN,
+          DOWNLOAD_TEST_RELEASE_ID: RELEASE_ID,
+          DOWNLOAD_TEST_COS_BUCKET: TEST_BUCKET,
+        }
+        : {
+          DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
+          DOWNLOAD_PROD_COS_BUCKET: PRODUCTION_BUCKET,
+        },
+      ...options.artifactPrefix === undefined ? {} : { DSH_DESKTOP_BRAND_FILE: brandFile },
+    },
   }
 }
 
@@ -309,5 +319,47 @@ describe('desktop upload plan', () => {
       }],
     })}\n`)
     await expect(createDesktopUploadPlan('mac-arm64', paths)).rejects.toThrow(/mac-arm64\.zip/u)
+  })
+
+  it('names the Windows update files with the brand artifact prefix', async () => {
+    const paths = await fixture('win-x64', '2.0.0-rc.1.20261003.1', 'production', { artifactPrefix: 'example-desktop' })
+    const plan = await createDesktopUploadPlan('win-x64', paths)
+    expect(plan.artifacts.map(artifact => artifact.key)).toEqual([
+      'dsh-desk/bin/win-x64/example-desktop-2.0.0-rc.1.20261003.1-win-x64.exe',
+      'dsh-desk/bin/win-x64/example-desktop-2.0.0-rc.1.20261003.1-win-x64.exe.blockmap',
+      'dsh-desk/feeds/win-x64/nightly.yml',
+    ])
+    await expect(createDesktopUploadPlan('win-x64', { ...paths, environment: { ...paths.environment, DSH_DESKTOP_BRAND_FILE: undefined } }))
+      .rejects.toThrow(/must reference deepseek-harness-/u)
+  })
+
+  it('publishes an unsigned Windows package recorded as unsigned under a configured production origin', async () => {
+    const paths = await fixture('win-x64', '2.0.0', 'production', { artifactPrefix: 'example-desktop', unsigned: true })
+    const environment = { ...paths.environment, DOWNLOAD_PROD_ORIGIN: 'https://downloads.example.com' }
+    await writeFile(join(paths.artifactsRoot, 'win-x64-release.json'), `${JSON.stringify({ schemaVersion: 1, target: 'win-x64',
+      version: '2.0.0', environment: 'production', publicUrl: 'https://downloads.example.com/dsh-desk/feeds/win-x64/', unsigned: true })}\n`)
+    const plan = await createDesktopUploadPlan('win-x64', { ...paths, environment, unsigned: true })
+    expect(plan.artifacts.map(artifact => artifact.filename)).toEqual([
+      'example-desktop-2.0.0-win-x64-unsigned.exe',
+      'example-desktop-2.0.0-win-x64-unsigned.exe.blockmap',
+      'nightly.yml',
+      'latest.yml',
+    ])
+    expect(load(plan.artifacts[2]!.contents!)).toMatchObject({
+      files: [{ url: 'https://downloads.example.com/dsh-desk/bin/win-x64/example-desktop-2.0.0-win-x64-unsigned.exe' }],
+    })
+  })
+
+  it('requires the upload mode to match whether the completion record is unsigned', async () => {
+    const unsignedPaths = await fixture('win-x64', '1.2.3', 'test', { unsigned: true })
+    await expect(createDesktopUploadPlan('win-x64', unsignedPaths)).rejects.toThrow(/is an unsigned package/u)
+    const signedPaths = await fixture('win-x64')
+    await expect(createDesktopUploadPlan('win-x64', { ...signedPaths, unsigned: true })).rejects.toThrow(/is not an unsigned package/u)
+  })
+
+  it('rejects unsigned macOS and fixed-installer uploads', async () => {
+    const paths = await fixture('win-x64', '1.2.3', 'test', { unsigned: true })
+    await expect(createDesktopUploadPlan('mac-arm64', { ...paths, unsigned: true })).rejects.toThrow(/require win-x64/u)
+    await expect(createDesktopUploadPlan('win-x64', { ...paths, unsigned: true, latest: true })).rejects.toThrow(/only update feeds/u)
   })
 })

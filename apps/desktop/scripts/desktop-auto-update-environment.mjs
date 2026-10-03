@@ -14,7 +14,7 @@ const UPDATE_ENVIRONMENTS = {
     secretKeyEnvName: 'DOWNLOAD_TEST_COS_SECRET_KEY',
   },
   production: {
-    originEnvName: undefined,
+    originEnvName: 'DOWNLOAD_PROD_ORIGIN',
     fixedOrigin: 'https://download.deepseek.com',
     bucketEnvName: 'DOWNLOAD_PROD_COS_BUCKET',
     secretIdEnvName: 'DOWNLOAD_PROD_COS_SECRET_ID',
@@ -119,24 +119,50 @@ function httpsOrigin(value, name) {
   return parsed.origin
 }
 
+/** Environment variable that lets an unsigned Windows package carry an update feed. */
+export const DESKTOP_UNSIGNED_UPDATES_ENV = 'DSH_DESKTOP_UNSIGNED_UPDATES'
+
+/**
+ * Resolve whether an unsigned package publishes an update feed.
+ *
+ * An unsigned package's updater configuration names no publisher, so the installed updater accepts any
+ * installer whose SHA-512 matches the feed it downloaded. The switch therefore refuses upstream's fixed
+ * production origin and requires a distribution's own `DOWNLOAD_PROD_ORIGIN` for production.
+ * @param {NodeJS.ProcessEnv} env - Packaging environment.
+ * @returns {boolean} Whether an unsigned package receives the selected deployment's update feed.
+ * @throws {Error} When the value is not `0` or `1`, or production would use upstream's origin.
+ */
+export function resolveDesktopUnsignedUpdates(env) {
+  const value = env[DESKTOP_UNSIGNED_UPDATES_ENV]?.trim()
+  if (value === undefined || value === '' || value === '0') return false
+  if (value !== '1') throw new Error(`desktop auto-update: ${DESKTOP_UNSIGNED_UPDATES_ENV} must be 0 or 1`)
+  if (resolveDesktopAutoUpdateEnvironment(env) === 'production') {
+    const configured = env.DOWNLOAD_PROD_ORIGIN?.trim()
+    if (!configured || httpsOrigin(configured, 'DOWNLOAD_PROD_ORIGIN') === UPDATE_ENVIRONMENTS.production.fixedOrigin) {
+      throw new Error(`desktop auto-update: ${DESKTOP_UNSIGNED_UPDATES_ENV} requires a DOWNLOAD_PROD_ORIGIN other than ${UPDATE_ENVIRONMENTS.production.fixedOrigin}`)
+    }
+  }
+  return true
+}
+
 /**
  * Resolve the public updater URL and object prefixes for one release target.
  * @param {NodeJS.ProcessEnv} env - Packaging or upload environment.
  * @param {NodeJS.Platform} platform - Target Node.js platform.
  * @param {string} arch - Target Node.js architecture.
  * @returns {{ environment: 'test' | 'production', target: 'mac-arm64' | 'mac-x64' | 'win-x64', origin: string, publicUrl: string, keyPrefix: string, binaryKeyPrefix: string }} Resolved updater configuration.
- * @throws {Error} When the test deployment lacks a valid HTTPS origin or a 32-character lowercase hexadecimal release ID.
+ * @throws {Error} When the test deployment lacks a valid HTTPS origin or a 32-character lowercase hexadecimal release ID, or a configured production origin is invalid.
  */
 export function resolveDesktopAutoUpdateConfig(env, platform, arch) {
   const environment = resolveDesktopAutoUpdateEnvironment(env)
   const target = resolveDesktopAutoUpdateTarget(platform, arch)
   const deployment = UPDATE_ENVIRONMENTS[environment]
-  let origin = deployment.fixedOrigin
-  if (origin === undefined) {
-    const { originEnvName } = deployment
-    if (originEnvName === undefined) throw new Error('desktop auto-update: selected deployment has no origin')
-    origin = httpsOrigin(requiredEnvironmentValue(env, originEnvName), originEnvName)
-  }
+  const { originEnvName } = deployment
+  // A configured origin lets a downstream distribution publish its own production feed.
+  const configured = env[originEnvName]?.trim()
+  const origin = configured === undefined || configured === ''
+    ? deployment.fixedOrigin ?? httpsOrigin(requiredEnvironmentValue(env, originEnvName), originEnvName)
+    : httpsOrigin(configured, originEnvName)
   let releasePrefix = 'dsh-desk'
   if (environment === 'test') {
     const releaseId = requiredEnvironmentValue(env, 'DOWNLOAD_TEST_RELEASE_ID')

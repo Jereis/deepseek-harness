@@ -41,7 +41,7 @@ describe('desktop upload command', () => {
 
     await uploadDesktopTarget(['win-x64', ...latest ? ['--latest'] : []])
 
-    expect(createDesktopUploadPlan).toHaveBeenCalledWith('win-x64', { environment: credentials, latest })
+    expect(createDesktopUploadPlan).toHaveBeenCalledWith('win-x64', { environment: credentials, latest, unsigned: false })
     expect(uploadDesktopRelease).toHaveBeenCalledOnce()
     expect(vi.mocked(uploadDesktopRelease).mock.calls[0]![0]).toBe(plan)
     if (tagged) {

@@ -65,7 +65,7 @@ export function resolveCredentialUploadEnvironment(
  */
 export async function uploadDesktopTarget(args: string[]): Promise<void> {
   const { positionals, values } = parseArgs({ args, allowPositionals: true, options: {
-    latest: { type: 'boolean' },
+    latest: { type: 'boolean' }, unsigned: { type: 'boolean' },
     'credential-launcher': { type: 'boolean' }, environment: { type: 'string' }, bucket: { type: 'string' },
   } })
   const target = positionals[0]
@@ -85,7 +85,7 @@ export async function uploadDesktopTarget(args: string[]): Promise<void> {
   const environment = launcher
     ? resolveCredentialUploadEnvironment(fileEnvironment, process.env, values.environment as 'test' | 'production', values.bucket!, name)
     : fileEnvironment
-  const plan = await createDesktopUploadPlan(name, { environment, latest: values.latest === true })
+  const plan = await createDesktopUploadPlan(name, { environment, latest: values.latest === true, unsigned: values.unsigned === true })
   const cos = createDesktopCos({
     secretId: requiredEnvironmentValue(environment, plan.secretIdEnvName),
     secretKey: requiredEnvironmentValue(environment, plan.secretKeyEnvName),

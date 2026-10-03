@@ -118,6 +118,29 @@ describe('Desktop local packaging configuration', () => {
     })
   })
 
+  it('validates the update feed of an unsigned package only when unsigned updates are enabled', () => {
+    const unsigned = { ...POLICY, DSH_DESKTOP_APP_ID: RELEASE.DSH_DESKTOP_APP_ID, DSH_DESKTOP_UNSIGNED_UPDATES: '1' }
+    expect(() => {
+      validateDesktopPackageEnvironment(unsigned, WINDOWS, { unsigned: true })
+    }).toThrow(/DOWNLOAD_TEST_ORIGIN/u)
+    expect(() => {
+      validateDesktopPackageEnvironment({ ...RELEASE, DSH_DESKTOP_UNSIGNED_UPDATES: '1' }, WINDOWS, { unsigned: true })
+    }).not.toThrow()
+    expect(() => {
+      validateDesktopPackageEnvironment({ ...unsigned, DSH_DESKTOP_UNSIGNED_UPDATES: 'on' }, WINDOWS, { unsigned: true })
+    }).toThrow(/must be 0 or 1/u)
+  })
+
+  it('reads DSH_DESKTOP_UNSIGNED_UPDATES only from the platform file', async () => {
+    await withDirectory(async (directory) => {
+      await writeFile(join(directory, '.env.windows'), '')
+      expect(loadDesktopPackageEnvironment('win32', { DSH_DESKTOP_UNSIGNED_UPDATES: '1' }, directory).DSH_DESKTOP_UNSIGNED_UPDATES)
+        .toBeUndefined()
+      await writeFile(join(directory, '.env.windows'), 'DSH_DESKTOP_UNSIGNED_UPDATES=1\n')
+      expect(loadDesktopPackageEnvironment('win32', {}, directory).DSH_DESKTOP_UNSIGNED_UPDATES).toBe('1')
+    })
+  })
+
   it('checks application and update configuration before Windows credentials while preserving unsigned and preparation modes', () => {
     expect(() => {
       validateDesktopPackageEnvironment({}, WINDOWS, { unsigned: true })

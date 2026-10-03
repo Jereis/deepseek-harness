@@ -12,6 +12,7 @@ import {
   desktopUpdateMetadataFilename,
   resolveDesktopUploadConfig,
 } from './desktop-auto-update-environment.mjs'
+import { readDesktopBrand } from './desktop-brand.mjs'
 import { desktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { validateDesktopBuildVersion } from './desktop-build-version.mjs'
 
@@ -59,6 +60,8 @@ export interface DesktopUploadPlan {
 export interface DesktopUploadPlanOptions {
   /** Publish only the installer at its fixed download URL, replacing the previous object. */
   readonly latest?: boolean
+  /** Upload an unsigned Windows package built with `DSH_DESKTOP_UNSIGNED_UPDATES=1` from its unsigned artifact directory. */
+  readonly unsigned?: boolean
   readonly environment?: NodeJS.ProcessEnv
   readonly repositoryRoot?: string
   readonly appRoot?: string
@@ -185,9 +188,14 @@ export async function createDesktopUploadPlan(
     throw new Error(`desktop upload: unsupported target ${String(targetName)}`)
   }
   const environment = options.environment ?? process.env
+  const unsigned = options.unsigned === true
+  if (unsigned && target.platform !== 'win32') throw new Error('desktop upload: unsigned uploads require win-x64')
+  // A fixed installer URL must never serve an unsigned build in place of a release artifact.
+  if (unsigned && options.latest) throw new Error('desktop upload: unsigned packages publish only update feeds')
   const repositoryRoot = options.repositoryRoot ?? REPOSITORY_ROOT
   const appRoot = options.appRoot ?? APP_ROOT
-  const artifactsRoot = options.artifactsRoot ?? desktopTargetBuildPaths(targetName).artifacts
+  const buildPaths = desktopTargetBuildPaths(targetName)
+  const artifactsRoot = options.artifactsRoot ?? (unsigned ? buildPaths.unsignedArtifacts : buildPaths.artifacts)
   const dshVersion = await manifestVersion(join(repositoryRoot, 'package.json'), 'dsh package')
   const desktopVersion = await manifestVersion(join(appRoot, 'package.json'), 'desktop package')
   if (dshVersion !== desktopVersion) {
@@ -215,6 +223,9 @@ export async function createDesktopUploadPlan(
     || buildRecord.publicUrl !== update.publicUrl) {
     throw new Error(`desktop upload: ${targetName} package completion record for ${buildVersion} does not match the ${update.environment} update destination`)
   }
+  if ((buildRecord.unsigned === true) !== unsigned) {
+    throw new Error(`desktop upload: ${targetName} package completion record for ${buildVersion} is ${unsigned ? 'not ' : ''}an unsigned package`)
+  }
 
   const metadataFilename = desktopUpdateMetadataFilename(buildVersion, target.platform)
   const metadataPath = join(artifactsRoot, metadataFilename)
@@ -234,7 +245,7 @@ export async function createDesktopUploadPlan(
     throw new Error(`desktop upload: ${metadataFilename}.files must contain exactly one target update file`)
   }
 
-  const base = `deepseek-harness-${buildVersion}-${target.os}-${target.arch}`
+  const base = `${readDesktopBrand(environment).brand.artifactPrefix}-${buildVersion}-${target.os}-${target.arch}${unsigned ? '-unsigned' : ''}`
   const updaterExtension = target.platform === 'darwin' ? 'zip' : 'exe'
   const updaterInfo = updateFileInfo(metadata.files[0], `${metadataFilename}.files[0]`, `${base}.${updaterExtension}`)
   const updaterPath = await verifyChecksummedArtifact(artifactsRoot, updaterInfo)

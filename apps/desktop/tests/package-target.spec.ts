@@ -103,6 +103,11 @@ describe('desktop package target', () => {
     expect(desktopElectronBuilderEnvironment(environment, false)).toEqual({ ...environment, DSH_DESKTOP_UNSIGNED: '0' })
   })
 
+  it('keeps the unsigned update switch and its feed settings for unsigned builds', () => {
+    const environment = { DSH_DESKTOP_UNSIGNED_UPDATES: '1', DOWNLOAD_PROD_ORIGIN: 'https://downloads.example.com' }
+    expect(desktopElectronBuilderEnvironment(environment, true)).toMatchObject(environment)
+  })
+
   it.each([false, true])('pins the Windows archive filter for the NSIS decoder (unsigned: %s)', (unsigned) => {
     expect(desktopElectronBuilderEnvironment({
       DSH_DESKTOP_TARGET_PLATFORM: 'win32', ELECTRON_BUILDER_7Z_FILTER: 'ARM64',

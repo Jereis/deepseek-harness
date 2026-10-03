@@ -77,6 +77,26 @@ describe('installer preparation preserves application dependencies', () => {
     expect(config.artifactName).toBe('deepseek-harness-${version}-${os}-${arch}-unsigned.${ext}')
   })
 
+  it('publishes an unsigned Windows feed without a publisher only when unsigned updates are enabled', async () => {
+    const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
+    const environment = {
+      DSH_DESKTOP_APP_ID: 'com.example.installer',
+      DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
+      DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://policy.example.com',
+      DSH_DESKTOP_TARGET_PLATFORM: 'win32',
+      DSH_DESKTOP_TARGET_ARCH: 'x64',
+      DSH_DESKTOP_UNSIGNED: '1',
+      DOWNLOAD_PROD_ORIGIN: 'https://downloads.example.com',
+    }
+    expect(createElectronBuilderConfig(environment, 'win32', 'x64').publish).toBeNull()
+    const config = createElectronBuilderConfig({ ...environment, DSH_DESKTOP_UNSIGNED_UPDATES: '1' }, 'win32', 'x64')
+    expect(config.publish).toEqual([{ provider: 'generic', url: 'https://downloads.example.com/dsh-desk/feeds/win-x64/', channel: 'nightly' }])
+    expect(config.win.signtoolOptions.publisherName).toBeUndefined()
+    expect(config.artifactName).toBe('deepseek-harness-${version}-${os}-${arch}-unsigned.${ext}')
+    expect(() => createElectronBuilderConfig({ ...environment, DSH_DESKTOP_UNSIGNED_UPDATES: '1', DOWNLOAD_PROD_ORIGIN: undefined },
+      'win32', 'x64')).toThrow(/DOWNLOAD_PROD_ORIGIN/u)
+  })
+
   it('packages every preload entry point the shell loads', async () => {
     const { readdirSync, readFileSync } = await import('node:fs')
     const sourceDirectory = new URL('../src/', import.meta.url)
