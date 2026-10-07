@@ -5,6 +5,9 @@ import { posix, win32 } from 'node:path'
 import { runNativeCommand, type NativeCommandRunner } from '@deepseek-ai/dsh-native-command'
 import { DEFAULT_WORKSPACE_DIRECTORY } from './default-workspace.ts'
 
+/** Upstream's directory under Documents for the default Workspace. */
+export const DEFAULT_DOCUMENTS_SUBDIRECTORY = 'deepseek-harness'
+
 /** Platform observations replaceable in directory-resolution tests. */
 interface DocumentsDirectoryInternals {
   readonly platform?: NodeJS.Platform
@@ -28,16 +31,30 @@ export function validateDocumentsDirectory(directory: string, platform: NodeJS.P
 }
 
 /**
+ * Validate the directory name that holds the default Workspace under Documents.
+ * @param name - one path segment.
+ * @returns the same name.
+ */
+export function validateDocumentsSubdirectory(name: string): string {
+  if (name === '' || name === '.' || name === '..' || /[\\/]/.test(name)) {
+    throw new Error(`Documents subdirectory must be a single path segment: '${name}'`)
+  }
+  return name
+}
+
+/**
  * Resolve the first-use directory on the Host without creating files.
  * @param documentsDirectory - explicit deployment override for the system Documents directory.
  * @param signal - caller lifetime and lookup deadline.
  * @param internals - platform facts and native command runner.
+ * @param subdirectory - directory under Documents that holds the default Workspace.
  * @returns the absolute candidate path.
  */
 export async function defaultWorkspaceDirectory(
   documentsDirectory: string | undefined,
   signal: AbortSignal,
   internals: DocumentsDirectoryInternals = {},
+  subdirectory = DEFAULT_DOCUMENTS_SUBDIRECTORY,
 ): Promise<string> {
   const platform = internals.platform ?? process.platform
   const paths = platform === 'win32' ? win32 : posix
@@ -74,5 +91,5 @@ export async function defaultWorkspaceDirectory(
   }
   directory = validateDocumentsDirectory(directory, platform)
   signal.throwIfAborted()
-  return paths.join(directory, 'deepseek-harness', DEFAULT_WORKSPACE_DIRECTORY)
+  return paths.join(directory, subdirectory, DEFAULT_WORKSPACE_DIRECTORY)
 }

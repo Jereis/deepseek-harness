@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { NativeCommandRunner } from '@deepseek-ai/dsh-native-command'
-import { defaultWorkspaceDirectory, validateDocumentsDirectory } from '../src/default-directory.ts'
+import { defaultWorkspaceDirectory, validateDocumentsDirectory, validateDocumentsSubdirectory } from '../src/default-directory.ts'
 
 describe('system Documents directory', () => {
   it.each([
@@ -19,6 +19,18 @@ describe('system Documents directory', () => {
     await expect(defaultWorkspaceDirectory('/documents', new AbortController().signal, { platform: 'linux', run }))
       .resolves.toBe('/documents/deepseek-harness/default-workspace')
     expect(run).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['win32', 'D:\\Documents', 'D:\\Documents\\acme-studio\\default-workspace'],
+    ['linux', '/documents', '/documents/acme-studio/default-workspace'],
+  ] as const)('places the default Workspace under a configured %s subdirectory', async (platform, documents, path) => {
+    await expect(defaultWorkspaceDirectory(documents, new AbortController().signal, { platform }, 'acme-studio'))
+      .resolves.toBe(path)
+  })
+
+  it.each(['', '.', '..', 'a/b', 'a\\b'])('rejects a subdirectory that is not one path segment: %j', (name) => {
+    expect(() => validateDocumentsSubdirectory(name)).toThrow('single path segment')
   })
 
   it.each(['', '\r\n', '/home/a\n'])('rejects an unavailable XDG directory %j', async (stdout) => {

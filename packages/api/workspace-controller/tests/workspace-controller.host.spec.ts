@@ -50,7 +50,7 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve }
 }
 
-async function harness(options: { systemDocuments?: boolean } = {}) {
+async function harness(options: { systemDocuments?: boolean, documentsSubdirectory?: string } = {}) {
   const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-workspace-controller-')))
   tempDirs.push(root)
   const ctx = new Context()
@@ -68,7 +68,10 @@ async function harness(options: { systemDocuments?: boolean } = {}) {
     lookups: { configure: () => dispose },
     contexts: { configureHost: () => dispose },
   } as never)
-  const controller = new WorkspaceController(ctx, options.systemDocuments === true ? {} : { documentsDirectory: root })
+  const controller = new WorkspaceController(ctx, {
+    ...options.systemDocuments === true ? {} : { documentsDirectory: root },
+    ...options.documentsSubdirectory === undefined ? {} : { documentsSubdirectory: options.documentsSubdirectory },
+  })
   return { controller, ctx, root, storageDomain }
 }
 
@@ -466,6 +469,17 @@ describe('first-use Remote', () => {
     expect(existsSync(result!.workspace.path)).toBe(true)
     expect(ctx.sessions.list()).toEqual([])
     expect(await controller.initializeDefault(signal)).toEqual(result)
+  })
+
+  it('places the default Workspace under a configured Documents subdirectory', async () => {
+    const { controller, root } = await harness({ documentsSubdirectory: 'acme-studio' })
+    const result = await controller.initializeDefault(new AbortController().signal)
+    expect(result!.workspace.path).toBe(join(root, 'acme-studio', DEFAULT_WORKSPACE_DIRECTORY))
+    expect(result!.workspace.title).toBe(DEFAULT_WORKSPACE_DIRECTORY)
+  })
+
+  it('rejects a Documents subdirectory that is not one path segment at load', async () => {
+    await expect(harness({ documentsSubdirectory: '../outside' })).rejects.toThrow('single path segment')
   })
 
   it('skips ineligible first use and propagates preparation failures', async () => {
