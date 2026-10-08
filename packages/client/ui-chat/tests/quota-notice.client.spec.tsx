@@ -5,7 +5,7 @@
 // @vitest-environment jsdom
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { afterEach, describe, expect, it } from 'vitest'
-import { act, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { SlotTestRuntime, stubConfigForm, usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import type { SessionLiveEventEntry, SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
@@ -17,6 +17,8 @@ import {
 import { apply as applyChat, inject as injectChat } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { QuotaNoticeInjected } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { CHAT_SETTINGS_NAMESPACE, type ChatSettings } from '../src/chat-settings.ts'
+import { QuotaNoticeHost } from '../src/client/chat/QuotaNoticeHost.tsx'
+import type { QuotaNoticeHostProps, QuotaNoticeOwnerProps, QuotaNoticeState } from '../src/client/contract/slots.ts'
 
 usePinnedBrowserLanguages('en')
 
@@ -38,6 +40,14 @@ const quotaEntry = (seq: number, code: string): SessionLiveEventEntry => ({
     data: { turn: 0, reason: { kind: 'error', error: { code, message: 'balance' } } },
   },
 })
+
+/** One `request/header` entry naming the provider route the following requests use. */
+const headerEntry = (seq: number, provider: string): SessionLiveEventEntry => ({
+  type: 'event', event: {
+    type: 'request/header', seq: seq as SessionSeq, time: seq,
+    data: { header: { config: { provider, model: 'm' } }, reason: 'change' },
+  },
+} as SessionLiveEventEntry)
 
 /**
  * Mount the real Conversation and Chat plugins over a runtime whose root frame
@@ -118,6 +128,19 @@ describe('frame-wide quota notices', () => {
     expect(notice.getSnapshot()).toMatchObject({ code: 'QUOTA' })
     // An unretained later notice rekeys the surface so its display restarts.
     expect(notice.getSnapshot()?.seq).not.toBe(first)
+  })
+
+  it('carries the provider of the latest loaded request header, and none when no header is loaded', async () => {
+    const b = await bench()
+    await attach(b.runtime, b.sourceDescriptor)
+    const notice = noticeFace(b.runtime).hooks.notice
+    await b.runtime.sessions.appendEvent(SID, quotaEntry(0, 'QUOTA'))
+    expect(notice.getSnapshot()).not.toHaveProperty('provider')
+    for (const [seq, provider] of [[1, 'deepseek-official'], [2, 'langtu']] as const) {
+      await b.runtime.sessions.appendEvent(SID, headerEntry(seq, provider))
+    }
+    await b.runtime.sessions.appendEvent(SID, quotaEntry(3, 'QUOTA'))
+    expect(notice.getSnapshot()).toMatchObject({ code: 'QUOTA', provider: 'langtu' })
   })
 
   it('never publishes for history replacement or paging, or for other failures', async () => {
@@ -232,5 +255,25 @@ describe('frame-wide quota notices', () => {
     // A leaked callback would still write through the detached store.
     await b.runtime.sessions.appendEvent(SID, quotaEntry(1, 'ACCOUNT_QUOTA'))
     expect(notice.getSnapshot()).toBe(published)
+  })
+})
+
+describe('quota notice chain owner', () => {
+  it.each([
+    [{ code: 'QUOTA', seq: 1, provider: 'langtu' }, { code: 'QUOTA', provider: 'langtu' }],
+    [{ code: 'ACCOUNT_QUOTA', seq: 2 }, { code: 'ACCOUNT_QUOTA' }],
+  ] as const)('passes the provider through when the notice has one (%o)', (state, expected) => {
+    const owners: QuotaNoticeOwnerProps[] = []
+    const props = {
+      useNotice: <T,>(select: (notice: QuotaNoticeState | null) => T) => select(state),
+      dismissNotice: () => {},
+      keepNoticeOpen: () => () => {},
+      renderSlotChain: (_name: string, owner: QuotaNoticeOwnerProps) => { owners.push(owner); return null },
+      t: () => 'quota',
+    } as unknown as QuotaNoticeHostProps
+    render(<QuotaNoticeHost {...props} />)
+    expect(owners).toHaveLength(1)
+    expect(owners[0]).toMatchObject(expected)
+    if (!('provider' in expected)) expect(owners[0]).not.toHaveProperty('provider')
   })
 })

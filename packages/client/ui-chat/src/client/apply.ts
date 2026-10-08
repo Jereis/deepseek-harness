@@ -3,7 +3,7 @@ import type {} from '@deepseek-ai/dsh-client-product-analytics/client'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
-import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionBinding, SessionEventLikeEntry } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { GroupKey } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { createSnapshotStore, type ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -60,6 +60,21 @@ export const inject = [
 ]
 
 /**
+ * The provider route of the latest `request/header` in a loaded event window.
+ * A header is logged only when the call configuration changes, so the latest
+ * one is the configuration the window's newest request ran under.
+ * @param entries - the loaded window, oldest first.
+ * @returns the provider, or undefined when no header is loaded.
+ */
+function latestRequestProvider(entries: readonly SessionEventLikeEntry[]): string | undefined {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]!
+    if (entry.type === 'event' && entry.event.type === 'request/header') return entry.event.data.header.config.provider
+  }
+  return undefined
+}
+
+/**
  * Mount all Chat-owned contributions.
  * @param ctx - Client root context.
  */
@@ -89,7 +104,8 @@ export function apply(ctx: Context): void {
             if (event.type !== 'turn/end' || event.data.reason.kind !== 'error') continue
             const { code } = event.data.reason.error
             if (quotaNoticeHolds.size > 0 || (code !== 'QUOTA' && code !== 'ACCOUNT_QUOTA')) continue
-            quotaNotice.set({ code, seq: ++quotaNoticeSeq })
+            const provider = latestRequestProvider(binding.eventSource.getSnapshot().entries)
+            quotaNotice.set({ code, seq: ++quotaNoticeSeq, ...provider === undefined ? {} : { provider } })
           }
         })
         return () => {

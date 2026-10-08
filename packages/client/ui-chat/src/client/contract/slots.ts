@@ -66,12 +66,19 @@ export interface QuotaNoticeState {
   code: QuotaNoticeCode
   /** Per-publication sequence; the host keys its surface by it. */
   seq: number
+  /**
+   * Provider route of the failed turn: the latest `request/header` in the
+   * loaded event window. Absent when that header is older than the window.
+   */
+  provider?: string
 }
 
 /** Owner currency of one quota notice offered to the frame-wide chain. */
 export interface QuotaNoticeOwnerProps {
   /** Stable failure code retained in the Session log. */
   code: QuotaNoticeCode
+  /** Provider route of the failed turn, when known; see {@link QuotaNoticeState.provider}. */
+  provider?: string
   /** Provider-neutral notice copy in the active locale. */
   message: string
   /** Take the notice down. */
