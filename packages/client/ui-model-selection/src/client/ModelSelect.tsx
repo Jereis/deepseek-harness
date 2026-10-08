@@ -62,7 +62,7 @@ const MEASURE_STYLE: CSSProperties = { visibility: 'hidden', left: 0, top: 0 }
  * @returns the trigger and, while open, the two-level menu.
  */
 export function ModelSelect(
-  { locked, available, directory, load, select, t }:
+  { locked, available, directory, providerPriority, load, select, t }:
   ModelSelectInjected & { locked: boolean } & PropsLocale<'model'>,
 ) {
   const state = useSyncExternalStore(
@@ -90,7 +90,11 @@ export function ModelSelect(
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
   const id = useId()
 
-  const groups = useMemo(() => orderModelProviders(state.groups), [state.groups])
+  const priority = useSyncExternalStore(
+    fn => providerPriority?.subscribe(fn) ?? (() => {}),
+    () => providerPriority?.getSnapshot(),
+  )
+  const groups = useMemo(() => orderModelProviders(state.groups, priority), [state.groups, priority])
   const choices = useMemo(() => groups.flatMap(group =>
     group.models.map(model => ({
       group,

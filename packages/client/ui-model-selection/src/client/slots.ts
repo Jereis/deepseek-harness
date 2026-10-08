@@ -6,7 +6,7 @@
  */
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
-import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { ObservableSnapshot, SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ModelDirectoryState } from './directory.ts'
 
 /** Injected business face of the composer model seat. */
@@ -15,6 +15,8 @@ export interface ModelSelectInjected {
   available: boolean
   /** The session's shared directory store (same instance the /model popup reads). */
   directory: SnapshotStore<ModelDirectoryState>
+  /** Provider ids listed first; absent lists `deepseek-account` and `deepseek-official` first. */
+  providerPriority?: ObservableSnapshot<readonly string[]>
   /** Ensure the shared advisory catalog is loaded (errors land on the store). */
   load: () => void
   /**

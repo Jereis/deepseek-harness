@@ -18,8 +18,10 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { WeakMapWithValues } from '@deepseek-ai/dsh-util-values'
+import { createSnapshotStore, type ObservableSnapshot, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { ModelCatalogDirectory } from './catalog.ts'
 import { ModelDirectory } from './directory.ts'
+import { DEFAULT_PROVIDER_PRIORITY } from './provider-order.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -31,13 +33,21 @@ declare module '@deepseek-ai/cordis' {
 interface LiveState {
   /** Directories keyed by Client binding, removed by their scope disposer. */
   readonly directories: WeakMapWithValues<SessionBinding, ModelDirectory>
+  /** Live provider-priority contributions, in registration order. */
+  readonly priorities: Map<symbol, readonly string[]>
+  /** The resolved order both pickers read. */
+  readonly priority: SnapshotStore<readonly string[]>
 }
 
 /** The `ctx.modelDirectories` session model-selection service. */
 export class ModelDirectoryResolver extends Service {
   static inject = ['sessions', 'remote', 'remote.session']
 
-  private readonly live: LiveState = { directories: new WeakMapWithValues() }
+  private readonly live: LiveState = {
+    directories: new WeakMapWithValues(),
+    priorities: new Map(),
+    priority: createSnapshotStore<readonly string[]>(DEFAULT_PROVIDER_PRIORITY),
+  }
   private readonly catalog: ModelCatalogDirectory
 
   /**
@@ -55,6 +65,36 @@ export class ModelDirectoryResolver extends Service {
     ctx.remote.$on('settings/document-updated', () => { this.catalog.refresh() })
     ctx.remote.$on('credentials/record-updated', () => { this.catalog.refresh() })
     ctx.remote.$on('credentials/reference-updated', () => { this.catalog.refresh() })
+  }
+
+  /** Provider ids both pickers list first, in order; observable for re-rendering. */
+  get providerPriority(): ObservableSnapshot<readonly string[]> {
+    return this.live.priority
+  }
+
+  /**
+   * List `providers` first in both pickers, ahead of the default
+   * `deepseek-account` and `deepseek-official`, until the returned function is
+   * called or the calling plugin unloads. Contributions apply in registration
+   * order; a provider already listed keeps its first position.
+   * @param providers - provider route ids, highest first.
+   * @returns a function that withdraws this contribution; calling it again is a no-op.
+   */
+  prioritizeProviders(providers: readonly string[]): () => void {
+    const { live } = this
+    const publish = (): void => {
+      live.priority.set([...new Set([...[...live.priorities.values()].flat(), ...DEFAULT_PROVIDER_PRIORITY])])
+    }
+    const dispose = this.ctx.effect(() => {
+      const key = Symbol('provider priority')
+      live.priorities.set(key, [...providers])
+      publish()
+      return () => {
+        live.priorities.delete(key)
+        publish()
+      }
+    }, 'ui-model-selection: provider priority')
+    return () => void dispose()
   }
 
   /**

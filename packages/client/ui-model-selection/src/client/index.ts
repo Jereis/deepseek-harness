@@ -49,9 +49,9 @@ function rowId(providerId: string, modelId: string): string {
 }
 
 /** Flatten the directory into popup rows; failure rows are listed for visibility but never selectable. */
-function optionsOf(directory: ModelDirectoryState, t: TranslateNS<'model'>): SelectOption[] {
+function optionsOf(directory: ModelDirectoryState, t: TranslateNS<'model'>, priority: readonly string[]): SelectOption[] {
   const rows: SelectOption[] = []
-  for (const group of orderModelProviders(directory.groups)) {
+  for (const group of orderModelProviders(directory.groups, priority)) {
     const name = group.id === 'deepseek-account' ? t('provider.account') : group.name
     for (const model of group.models) {
       rows.push({
@@ -144,7 +144,7 @@ export function apply(ctx: ClientContext): void {
           if (sessions.subagentAddress(session.sessionId) !== undefined) {
             throw new Error('model selection is unavailable for addressed subagent sessions')
           }
-          return optionsOf(await models.directoryFor(session.sessionId).load(), t)
+          return optionsOf(await models.directoryFor(session.sessionId).load(), t, models.providerPriority.getSnapshot())
         },
         onSelect: async (option, session) => {
           if (sessions.subagentAddress(session.sessionId) !== undefined) {
@@ -178,6 +178,7 @@ export function apply(ctx: ClientContext): void {
         return {
           available,
           directory: directory.store,
+          providerPriority: models.providerPriority,
           load: () => {
             if (available) directory.load().catch(() => { /* surfaced on the store */ })
           },

@@ -889,6 +889,21 @@ it('places account and official models before third-party models', async () => {
   await expect(`${names.join('\n')}\n`).toMatchFileSnapshot('./expected/account-first.txt')
 })
 
+it('lists contributed priority providers first and re-orders when the priority changes', () => {
+  const groups = ['custom', 'deepseek-official', 'gateway', 'deepseek-account'].map(id => ({
+    id, name: id, models: [{ id: `${id}-1`, name: `${id}-1` }],
+  }))
+  const directory = createSnapshotStore<ModelDirectoryState>(state({ current: null, groups }))
+  const priority = createSnapshotStore<readonly string[]>(['gateway', 'deepseek-account', 'deepseek-official'])
+  render(<ModelSelect locked={false} available directory={directory} providerPriority={priority} load={vi.fn()} select={vi.fn()} t={t} />)
+  fireEvent.click(screen.getByRole('button', { name: '请选择模型' }))
+  expect(screen.getAllByRole('menuitemradio').map(row => row.textContent))
+    .toEqual(['gateway-1', 'deepseek-account-1', 'deepseek-official-1', 'custom-1'])
+  act(() => { priority.set(['deepseek-account', 'deepseek-official']) })
+  expect(screen.getAllByRole('menuitemradio').map(row => row.textContent))
+    .toEqual(['deepseek-account-1', 'deepseek-official-1', 'custom-1', 'gateway-1'])
+})
+
 it.each([en, zh])('localizes the account group while preserving external names', (copy) => {
   const groups = ['deepseek-account', 'custom'].map(id => ({
     id, name: id === 'deepseek-account' ? 'DeepSeek Account' : 'My Gateway',

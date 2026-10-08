@@ -259,6 +259,42 @@ describe('ui-model-selection dual entry', () => {
     }
   })
 
+  it('lists contributed providers first in the popup and the seat until the contributor unloads', async () => {
+    const b = await bench()
+    try {
+      b.setGroups([
+        GROUPS[1]!, GROUPS[0]!, { ...GROUPS[0]!, id: 'deepseek-account', name: 'DeepSeek Account' },
+        { ...GROUPS[1]!, id: 'last-provider', name: 'Last Provider' },
+      ])
+      b.remote.emit('llm/adapters-updated', [])
+      b.mint('s1')
+      const order = async (): Promise<unknown[]> => [...new Set(
+        (await b.popup().options(projection('s1'), new AbortController().signal)).map(option => option.group?.name),
+      )]
+      let withdraw: (() => void) | undefined
+      const contributor = b.ctx.plugin({
+        inject: ['modelDirectories'],
+        apply(scope: Context) {
+          withdraw = scope.modelDirectories.prioritizeProviders(['last-provider', 'deepseek-official'])
+          scope.modelDirectories.prioritizeProviders(['external'])
+        },
+      })
+      await contributor
+      expect(await order()).toEqual(['last-provider', 'deepseek-official', 'external', 'deepseek-account'])
+      expect(b.ctx.modelDirectories.providerPriority.getSnapshot())
+        .toEqual(['last-provider', 'deepseek-official', 'external', 'deepseek-account'])
+
+      withdraw!()
+      withdraw!()
+      expect(await order()).toEqual(['external', 'deepseek-account', 'deepseek-official', 'last-provider'])
+
+      await contributor.dispose()
+      expect(await order()).toEqual(['deepseek-account', 'deepseek-official', 'external', 'last-provider'])
+    } finally {
+      await b.ctx.fiber.dispose()
+    }
+  })
+
   it('a seat selection is the current the popup marks active next — one shared state', async () => {
     const b = await bench()
     b.mint('s1')
