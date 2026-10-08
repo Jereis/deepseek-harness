@@ -108,6 +108,10 @@ profile 的 `models` 列表会替换而非扩展路由的已安装目录；每�
 
 每次操作捕获当前 `providers` Config 引用。新增或修改的 provider 配置在表单持久化前验证；未更改的目录故障仍可编辑。路由集合或重试策略变化时原子更新注册；如果其他适配器已拥有所请求的路由，则保留先前路由。
 
+### 运行时贡献路由
+
+默认实例（settings 命名空间 `llm-pi-ai`）提供 `llmPiAiRoutes` 服务，供从自身状态而非配置提供路由的插件使用，例如某个发行版的托管网关，其模型清单由后端返回。`ctx.llmPiAiRoutes.contribute(providers)` 接受与 `providers` 相同的 profile 字段与严格校验，并返回撤回这些路由的函数；调用方插件卸载时路由也随之撤回。贡献的路由与已配置路由一样服务请求并出现在模型选择器中，但不在可配置提供方目录中，因此 Models 页面既不列出也不编辑它，也不会写入 Config 或任何 settings 层。要更改贡献，先撤回再贡献替换项；模型清单变化会重新注册并发布 `llm/adapters-updated`。已配置路由或另一个仍有效的贡献已占用的键以 `DUPLICATE_ROUTE` 拒绝，无效 profile 以 `INVALID_ROUTE` 拒绝，其他适配器服务的键以注册表的错误拒绝；每种拒绝都让当前路由继续服务。
+
 ### 从端点发现模型
 
 插件会回答「该提供方可以提供哪些模型？」，供配置界面正在编辑或起草的路由使用。已安装目录提供的路由直接由目录回答，不发网络请求，并将其 `input` 数组保留为发现结果的 `inputModalities`；只有目录未描述的路由才会经网络询问。`openai-completions` 与 `openai-responses` 使用带 bearer 鉴权的 `GET {baseURL}/models`，`anthropic-messages` 则以 `x-api-key` 和 `anthropic-version` 使用原生 `GET /v1/models?limit=1000` 语义；其列表 URL 接受带或不带末尾 `/v1` 的 API 根地址，因为网关文档两种写法都会发布，且只有该列表 URL 会归一化这一段，模型请求收到的仍是配置原样的 `baseURL`。已配置且具名的路由会在 Host 内部提供已存凭据与 profile `headers`，因此通过 `cordis.patch.yml` 或 Cordis 配置设置的部署标头可以到达模型发现请求，但不会成为发现请求或 Models 页面的字段；表单中新键入的密钥仍优先于已存凭据。解析器接受标准 `data` 数组或富信息 `models` 对象，并归一化每个候选的 id、显示名、上下文窗口与最大输出 token 数；Anthropic 的 `max_input_tokens` 与 `max_tokens` 会进入相同容量字段，即使对象条目点名了另一个规范 id，对象键仍是请求 id，原始类型的对象属性会被忽略，缺失的显示名则回退到该请求 id。回答是界面可以提供给用户采纳的候选元数据——不存储任何内容，`cordis.patch.yml` 仍然是决定路由服务内容的唯一事实。
@@ -139,6 +143,7 @@ Config 更新严格验证发生变化的 provider。初始加载将已存储的�
 | 文件 | 职责 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Config 快照、目录及路由注册 |
+| [`src/routes.ts`](src/routes.ts) | 运行时贡献路由的 `llmPiAiRoutes` 服务 |
 | [`src/auth.ts`](src/auth.ts) | 覆盖 harness 凭据平面的凭据存储与 ambient auth context |
 | [`src/login.ts`](src/login.ts) | 面向提供登录的已安装提供方的授权流程 |
 | [`src/config.ts`](src/config.ts) | Profile schema、解析与可服务性校验 |
@@ -217,6 +222,7 @@ pi-ai 事件变成 harness 的推理、文本、工具调用、用量与 finish 
 - **`maxRequestImageBytes` 只计算 base64 图片载荷**，文本、工具、描述符与 JSON 结构在该上限之外，因此它必须留有余量地低于网关请求体上限。
 - **登录只存在于发起它的进程中**——授权尝试不持久，因此登录中途刷新页面会放弃它，用户需要重新开始。退出登录是对已存储记录执行 `deleteRecord`，只在本地忘记它，不会告知签发方。
 - **提供方原生发现经本插件的 ambient context 回答**——不点名凭据的路由交由目录提供方自身解析，它会询问环境值（`AZURE_OPENAI_API_KEY`、`AWS_PROFILE` 及各提供方自有集合）与本地凭据文件。两个问题都在这里得到回答：凭据 seam 先于进程环境被查询，文件存在性则针对宿主进程的文件系统以 `~` 展开后检查。它做不到的是*读取*凭据文件内容——自行解析 `~/.aws/credentials` 的提供方会直接读取，不经该 seam。
+- **贡献路由的凭据是普通凭据引用**——`apiKeyEnv` 与任何路由一样经凭据 seam 解析，因此由贡献方插件存储和移除该值，默认本地存储会把它写入磁盘。之后声明了同一键的已配置路由会接管该键。
 - **重置恢复继承配置**——重置下层 profile 提供的路由会恢复该路由。
 - **完整替换 Config 可以移除继承的字典条目**——字段重置则恢复其继承值。
 - **`headers` 可以携带 redactor 永远看不到的凭据**——profile 解析会拒绝 Fetch 无法表示的名称与值，但该字典仍是纯字符串；以 `apiKeyEnv` 引用存储凭据。

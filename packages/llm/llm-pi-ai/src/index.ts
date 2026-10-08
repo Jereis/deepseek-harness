@@ -68,10 +68,11 @@ import { PiAiAdapter } from './adapter.ts'
 import { authContextFrom, credentialStoreFrom } from './auth.ts'
 import { catalogProviderIds } from './catalog.ts'
 import { assertServiceable, Config, resolveProfiles } from './config.ts'
-import type { ResolvedPiAiProviderProfile } from './config.ts'
+import type { PiAiProviderProfile, ResolvedPiAiProviderProfile } from './config.ts'
 import { discoverModels } from './discovery.ts'
 import type { StoredModelDiscoveryProfile } from './discovery.ts'
 import { registerPiAiFlows } from './login.ts'
+import { PiAiRouteContributions } from './routes.ts'
 
 export { PiAiAdapter } from './adapter.ts'
 export type { PiAiAdapterOptions } from './adapter.ts'
@@ -88,6 +89,8 @@ export type {
   ResolvedPiAiProviderProfile,
 } from './config.ts'
 export { recordKeyFor } from './auth.ts'
+export { PiAiRouteContributions } from './routes.ts'
+export type { PiAiRouteContributionHost } from './routes.ts'
 export { supportedProtocols } from './provider.ts'
 
 export const name = 'llm-pi-ai'
@@ -111,6 +114,16 @@ function registrationFacts(profiles: ReadonlyMap<string, ResolvedPiAiProviderPro
       retryPolicy: profile.retryPolicy,
     }))
     .sort((left, right) => left.provider.localeCompare(right.provider))
+}
+
+/**
+ * The contributed profiles as given, sorted by route, so a contribution that
+ * changes only its model list still counts as a registration change.
+ */
+function contributedFacts(contributions: Iterable<Readonly<Record<string, PiAiProviderProfile>>>): unknown {
+  return [...contributions]
+    .flatMap(providers => Object.entries(providers))
+    .sort(([left], [right]) => left.localeCompare(right))
 }
 
 /**
@@ -160,7 +173,7 @@ export function apply(ctx: Context, config: Config): void {
    * stored configuration remains visible after an installed catalog changes.
    * Scalar configuration errors still reject resolution.
    */
-  const profiles = (): ReadonlyMap<string, ResolvedPiAiProviderProfile> => {
+  const configProfiles = (): ReadonlyMap<string, ResolvedPiAiProviderProfile> => {
     const raw = config.providers.get()
     if (raw === lastRaw && memoized !== undefined) return memoized
     const next = resolveProfiles(structuredClone(raw) as import('./config.ts').Options['providers'], 'deferred')
@@ -168,7 +181,28 @@ export function apply(ctx: Context, config: Config): void {
     memoized = next
     return next
   }
-  profiles()
+  configProfiles()
+  // Routes other plugins contribute through `llmPiAiRoutes` (default instance
+  // only). They serve requests beside the configured routes but never enter
+  // the configuration or the configurable-provider directory.
+  const contributions = new Map<symbol, {
+    raw: Readonly<Record<string, PiAiProviderProfile>>
+    resolved: ReadonlyMap<string, ResolvedPiAiProviderProfile>
+  }>()
+  let contributed: ReadonlyMap<string, ResolvedPiAiProviderProfile> = new Map()
+  let merged: { base: unknown; contributed: unknown; profiles: ReadonlyMap<string, ResolvedPiAiProviderProfile> } | undefined
+  /**
+   * Configured and contributed routes together, memoized by both inputs'
+   * identities. A configured route wins a key a contribution also holds:
+   * `contribute` refuses such keys, so the overlap only arises when settings
+   * later declare the same key, and the user's own route then takes it.
+   */
+  const profiles = (): ReadonlyMap<string, ResolvedPiAiProviderProfile> => {
+    const base = configProfiles()
+    if (merged?.base === base && merged.contributed === contributed) return merged.profiles
+    merged = { base, contributed, profiles: contributed.size === 0 ? base : new Map([...contributed, ...base]) }
+    return merged.profiles
+  }
   ctx.on('internal/config', function (this: import('@deepseek-ai/cordis').Fiber, _raw, next) {
     const raw: unknown = next()
     if (this !== ctx.fiber) return raw
@@ -239,7 +273,7 @@ export function apply(ctx: Context, config: Config): void {
   let directory: DirectoryRegistrationHandle | undefined
   let directoryFacts: unknown
   const ensureDirectory = (): void => {
-    const entries = directoryEntries(profiles(), settingsNs)
+    const entries = directoryEntries(configProfiles(), settingsNs)
     if (deepEqualJson(entries, directoryFacts)) return
     // Atomic replace, never dispose-then-register: a route another adapter
     // family already declares (a profile keyed `deepseek-official`) would
@@ -283,7 +317,10 @@ export function apply(ctx: Context, config: Config): void {
   let registration: AdapterRegistrationHandle | undefined
   let registeredFacts: unknown
   const ensureRegistrationFacts = (): void => {
-    const facts = registrationFacts(profiles())
+    // A contributed route's model list rides along: unlike a configured one,
+    // its change arrives with no settings write, so re-registering is what
+    // publishes `llm/adapters-updated` for model selectors to refresh.
+    const facts = { routes: registrationFacts(profiles()), contributed: contributedFacts([...contributions.values()].map(entry => entry.raw)) }
     if (deepEqualJson(facts, registeredFacts)) return
     // The registry captures the route set and each route's retry policy at
     // registration, so a change to either must re-register. The swap is
@@ -306,6 +343,46 @@ export function apply(ctx: Context, config: Config): void {
     registeredFacts = facts
   }
   ensureRegistrationFacts()
+
+  if (settingsNs === NS) {
+    const collect = (): void => {
+      contributed = new Map([...contributions.values()].flatMap(entry => [...entry.resolved]))
+    }
+    new PiAiRouteContributions(ctx, {
+      add(providers) {
+        let resolved: Map<string, ResolvedPiAiProviderProfile>
+        try {
+          resolved = resolveProfiles(structuredClone(providers) as import('./config.ts').Options['providers'], 'strict')
+        } catch (error) {
+          throw new LlmError(`llm-pi-ai: invalid contributed route: ${(error as Error).message}`, 'INVALID_ROUTE', { cause: error })
+        }
+        const taken = new Set([...configProfiles().keys(), ...contributed.keys()])
+        for (const provider of resolved.keys()) {
+          if (taken.has(provider)) {
+            throw new LlmError(`llm-pi-ai: contributed route "${provider}" is already served by this plugin`, 'DUPLICATE_ROUTE')
+          }
+        }
+        const key = Symbol('llm-pi-ai contribution')
+        contributions.set(key, { raw: structuredClone(providers), resolved })
+        collect()
+        try {
+          ensureRegistrationFacts()
+        } catch (error) {
+          // The registry refused the new route set (a key another adapter
+          // family already serves); the previous set is still registered.
+          contributions.delete(key)
+          collect()
+          throw error
+        }
+        return key
+      },
+      remove(key) {
+        contributions.delete(key)
+        collect()
+        ensureRegistrationFacts()
+      },
+    })
+  }
 
   ctx.on('loader/volatile-update', () => {
     try { ensureRegistrationFacts(); ensureDirectory() }
