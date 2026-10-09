@@ -21,6 +21,7 @@ import { readdir } from 'node:fs/promises'
 import { parse } from 'semver'
 import { desktopBuildVersionPrefix, validateDesktopBuildVersion } from './desktop-build-version.mjs'
 import { DESKTOP_AUTO_UPDATE_ENV, resolveDesktopUploadConfig } from './desktop-auto-update-environment.mjs'
+import { readDesktopBrand } from './desktop-brand.mjs'
 import { createDesktopCos, DESKTOP_COS_REGION } from './desktop-cos.ts'
 import type { DesktopPackageTargetName } from './package-target.ts'
 
@@ -30,8 +31,15 @@ const LISTING_DEADLINE_MS = 8_000
 /** Objects one listing page may return. */
 const LISTING_PAGE_SIZE = 1000
 
-/** Artifact name electron-builder writes for one build, on either platform; unsigned Windows builds add a suffix. */
-const ARTIFACT = /(?:^|\/)deepseek-harness-(?<version>.+)-(?:mac|win)-(?:arm64|x64)(?:-unsigned)?\.(?:exe|dmg|zip)$/u
+/**
+ * Match the artifact names electron-builder writes for one build, on either platform.
+ * @param artifactPrefix - The brand's artifact prefix, which leads every installer name.
+ * @returns A pattern capturing the version; unsigned Windows builds without a feed add a suffix.
+ */
+function artifactPattern(artifactPrefix: string): RegExp {
+  const prefix = artifactPrefix.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+  return new RegExp(`(?:^|/)${prefix}-(?<version>.+)-(?:mac|win)-(?:arm64|x64)(?:-unsigned)?\\.(?:exe|dmg|zip)$`, 'u')
+}
 
 /** Inputs that decide which versions are already taken. */
 export interface DesktopBuildVersionSuggestionOptions {
@@ -73,20 +81,27 @@ function sequenceNumbers(versions: Iterable<string>, prefix: string): number[] {
 /**
  * Read the versions one output directory already holds.
  * @param artifactsRoot - Directory electron-builder wrote installers into.
+ * @param artifact - Pattern for the brand's artifact names.
  * @returns Versions parsed from artifact names.
  */
-async function localVersions(artifactsRoot: string): Promise<string[]> {
+async function localVersions(artifactsRoot: string, artifact: RegExp): Promise<string[]> {
   const entries = await readdir(artifactsRoot).catch(() => [])
-  return entries.map(entry => ARTIFACT.exec(entry)?.groups?.version)
+  return entries.map(entry => artifact.exec(entry)?.groups?.version)
     .filter((version): version is string => version !== undefined && parse(version) !== null)
 }
 
 /**
  * Read every version one update bucket publishes for a target.
  * @param options - Product version, target, and environment naming the bucket.
+ * @param artifactPrefix - The brand's artifact prefix, which leads every object name.
+ * @param artifact - Pattern for the brand's artifact names.
  * @returns Versions parsed from object names, or undefined when the bucket cannot be listed completely in time.
  */
-async function remoteVersions(options: DesktopBuildVersionSuggestionOptions): Promise<string[] | undefined> {
+async function remoteVersions(
+  options: DesktopBuildVersionSuggestionOptions,
+  artifactPrefix: string,
+  artifact: RegExp,
+): Promise<string[] | undefined> {
   const platform = options.target === 'win-x64' ? 'win32' as const : 'darwin' as const
   const arch = options.target === 'mac-arm64' ? 'arm64' : 'x64'
   // An unconfigured destination has nothing to be unique against; an invalid one must not be mistaken for it.
@@ -107,7 +122,7 @@ async function remoteVersions(options: DesktopBuildVersionSuggestionOptions): Pr
         new Promise<{ keys: string[]; next: string | undefined }>((resolveListing, rejectListing) => {
           cos.getBucket({
             Bucket: update.bucket, Region: DESKTOP_COS_REGION, MaxKeys: LISTING_PAGE_SIZE,
-            Prefix: `${update.binaryKeyPrefix}/deepseek-harness-`, ...marker === undefined ? {} : { Marker: marker },
+            Prefix: `${update.binaryKeyPrefix}/${artifactPrefix}-`, ...marker === undefined ? {} : { Marker: marker },
           }, (error, data) => {
             if (error !== null && error !== undefined) rejectListing(error instanceof Error ? error : new Error(String(error)))
             else {
@@ -123,7 +138,7 @@ async function remoteVersions(options: DesktopBuildVersionSuggestionOptions): Pr
         }),
       ])
       for (const key of page.keys) {
-        const version = ARTIFACT.exec(key)?.groups?.version
+        const version = artifact.exec(key)?.groups?.version
         if (version !== undefined && parse(version) !== null) versions.push(version)
       }
       marker = page.next
@@ -145,8 +160,10 @@ async function remoteVersions(options: DesktopBuildVersionSuggestionOptions): Pr
  */
 export async function suggestDesktopBuildVersion(options: DesktopBuildVersionSuggestionOptions): Promise<string> {
   const prefix = `${desktopBuildVersionPrefix(options.productVersion)}${options.date ?? desktopBuildDateSegment()}.`
-  const published = await remoteVersions(options)
-  const taken = published ?? await localVersions(options.artifactsRoot)
+  const { artifactPrefix } = readDesktopBrand(options.environment).brand
+  const artifact = artifactPattern(artifactPrefix)
+  const published = await remoteVersions(options, artifactPrefix, artifact)
+  const taken = published ?? await localVersions(options.artifactsRoot, artifact)
   const used = sequenceNumbers(taken, prefix)
   const next = used.length === 0 ? 1 : Math.max(...used) + 1
   const suggestion = validateDesktopBuildVersion(`${prefix}${String(next)}`, options.productVersion)

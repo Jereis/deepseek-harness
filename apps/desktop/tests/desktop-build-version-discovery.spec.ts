@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { DEFAULT_DESKTOP_BRAND } from '../scripts/desktop-brand.mjs'
 import {
   desktopBuildDateSegment,
   suggestDesktopBuildVersion,
@@ -78,5 +79,21 @@ describe('desktop build version discovery', () => {
     ])
     await expect(suggestDesktopBuildVersion({ productVersion: PRERELEASE, target: 'win-x64', environment: {}, date: DATE, artifactsRoot }))
       .resolves.toBe(`${PRERELEASE}.${DATE}.3`)
+  })
+
+  it('reads the brand artifact prefix and ignores another prefix', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'dsh-discovery-brand-'))
+    directories.push(directory)
+    const brandFile = join(directory, 'brand.json')
+    await writeFile(brandFile, `${JSON.stringify({ ...DEFAULT_DESKTOP_BRAND, artifactPrefix: 'example.desktop' })}\n`)
+    const artifactsRoot = await artifactsWith([
+      `example.desktop-${PRERELEASE}.${DATE}.2-win-x64.exe`,
+      `example.desktop-${PRERELEASE}.${DATE}.3-win-x64-unsigned.exe`,
+      `deepseek-harness-${PRERELEASE}.${DATE}.9-win-x64.exe`,
+      `exampleXdesktop-${PRERELEASE}.${DATE}.8-win-x64.exe`,
+    ])
+    await expect(suggestDesktopBuildVersion({ productVersion: PRERELEASE, target: 'win-x64',
+      environment: { DSH_DESKTOP_BRAND_FILE: brandFile }, date: DATE, artifactsRoot }))
+      .resolves.toBe(`${PRERELEASE}.${DATE}.4`)
   })
 })
