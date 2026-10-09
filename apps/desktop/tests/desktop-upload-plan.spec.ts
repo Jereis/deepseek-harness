@@ -50,7 +50,7 @@ async function fixture(
   await writeFile(join(appRoot, 'package.json'), `${JSON.stringify({ version })}\n`)
 
   const [os, arch] = target.split('-') as ['mac' | 'win', 'arm64' | 'x64']
-  const base = `${options.artifactPrefix ?? 'deepseek-harness'}-${version}-${os}-${arch}${options.unsigned ? '-unsigned' : ''}`
+  const base = `${options.artifactPrefix ?? 'deepseek-harness'}-${version}-${os}-${arch}`
   const origin = environment === 'test'
     ? TEST_ORIGIN
     : 'https://download.deepseek.com'
@@ -340,13 +340,13 @@ describe('desktop upload plan', () => {
       version: '2.0.0', environment: 'production', publicUrl: 'https://downloads.example.com/dsh-desk/feeds/win-x64/', unsigned: true })}\n`)
     const plan = await createDesktopUploadPlan('win-x64', { ...paths, environment, unsigned: true })
     expect(plan.artifacts.map(artifact => artifact.filename)).toEqual([
-      'example-desktop-2.0.0-win-x64-unsigned.exe',
-      'example-desktop-2.0.0-win-x64-unsigned.exe.blockmap',
+      'example-desktop-2.0.0-win-x64.exe',
+      'example-desktop-2.0.0-win-x64.exe.blockmap',
       'nightly.yml',
       'latest.yml',
     ])
     expect(load(plan.artifacts[2]!.contents!)).toMatchObject({
-      files: [{ url: 'https://downloads.example.com/dsh-desk/bin/win-x64/example-desktop-2.0.0-win-x64-unsigned.exe' }],
+      files: [{ url: 'https://downloads.example.com/dsh-desk/bin/win-x64/example-desktop-2.0.0-win-x64.exe' }],
     })
   })
 

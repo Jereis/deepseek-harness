@@ -92,7 +92,7 @@ describe('installer preparation preserves application dependencies', () => {
     const config = createElectronBuilderConfig({ ...environment, DSH_DESKTOP_UNSIGNED_UPDATES: '1' }, 'win32', 'x64')
     expect(config.publish).toEqual([{ provider: 'generic', url: 'https://downloads.example.com/dsh-desk/feeds/win-x64/', channel: 'nightly' }])
     expect(config.win.signtoolOptions.publisherName).toBeUndefined()
-    expect(config.artifactName).toBe('deepseek-harness-${version}-${os}-${arch}-unsigned.${ext}')
+    expect(config.artifactName).toBe('deepseek-harness-${version}-${os}-${arch}.${ext}')
     expect(() => createElectronBuilderConfig({ ...environment, DSH_DESKTOP_UNSIGNED_UPDATES: '1', DOWNLOAD_PROD_ORIGIN: undefined },
       'win32', 'x64')).toThrow(/DOWNLOAD_PROD_ORIGIN/u)
   })

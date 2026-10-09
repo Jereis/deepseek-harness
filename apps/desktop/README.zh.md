@@ -253,7 +253,7 @@ pwsh -NoProfile -File apps/desktop/scripts/smoke-windows.ps1 -Makensis $Makensis
 
 Windows 安装器在启动时和选定目标目录后检查应用是否正在运行，通过检查后才将新版本解压到安装目录旁边。通过同卷目录改名替换前，安装器会再次检查。运行中的应用会阻止安装；更新启动允许等待应用退出，最长十秒。同路径升级在替换成功前保留旧目录；解压失败时旧版不变，替换失败时尝试恢复旧目录。安装器在启动前清理旧版备份。强制结束安装器或断电可能留下 `.new-*` 或 `.old-*` 目录；不同安装位置或安装范围迁移仍使用 electron-builder 的旧卸载器流程。
 
-解压失败时，安装器会把 7-Zip 的结果和完整错误输出写入更新缓存目录 `%LOCALAPPDATA%\<按包名派生>-updater\installer-logs\extract-failure-<时间戳>.log`（当前为 `@deepseek-aidsh-desktop-updater`），并在弹窗中显示首条错误行和 **复制错误信息** 按钮；静默安装只写入报告。未签名的 Windows 构建（`DSH_DESKTOP_UNSIGNED=1`）会将安装包命名为 `deepseek-harness-<版本>-win-x64-unsigned.exe`，以免被误当作发布产物。
+解压失败时，安装器会把 7-Zip 的结果和完整错误输出写入更新缓存目录 `%LOCALAPPDATA%\<按包名派生>-updater\installer-logs\extract-failure-<时间戳>.log`（当前为 `@deepseek-aidsh-desktop-updater`），并在弹窗中显示首条错误行和 **复制错误信息** 按钮；静默安装只写入报告。未签名的 Windows 构建（`DSH_DESKTOP_UNSIGNED=1`）会将安装包命名为 `deepseek-harness-<版本>-win-x64-unsigned.exe`，以免被误当作发布产物；开启 `DSH_DESKTOP_UNSIGNED_UPDATES=1` 时改用发布产物的文件名。
 
 <a id="upload-updates"></a>
 
@@ -325,7 +325,7 @@ pnpm run package:desktop:win:x64:unsigned
 
 该命令要求设置 `DSH_DESKTOP_APP_ID` 并具备常规构建依赖，包括编译原生模块所需的 Python 和 Visual C++ 构建工具。Python 不在 `PATH` 中时，将 `PYTHON` 设置为其可执行文件路径。命令将安装包写入 `.desktop-build/targets/win-x64/unsigned-artifacts/`，省略自动更新配置，清除签名凭据，且不生成发布完成记录。它不需要 EV 凭据或更新源地址。签名打包和上传命令仍遵循正式发布要求。
 
-在 `.env.windows` 中设置 `DSH_DESKTOP_UNSIGNED_UPDATES=1` 后，未签名包也写入所选部署的更新源：打包会校验更新地址，写入不含 `publisherName` 的 `app-update.yml`，并在 `unsigned-artifacts/` 中写入带 `unsigned: true` 的完成记录；`pnpm run upload:win:x64 --unsigned` 上传这些 `-unsigned` 文件，并拒绝模式不一致的完成记录。已安装的更新器只校验它下载的清单中的 SHA-512，因此能写入清单或其存储的人可以在这些客户端上安装任意代码。所以生产部署要求 `DOWNLOAD_PROD_ORIGIN` 不是 `https://download.deepseek.com`，`--latest` 也拒绝未签名包。该开关取值为 `0` 或 `1`，只从目标平台的 dotenv 文件读取。
+在 `.env.windows` 中设置 `DSH_DESKTOP_UNSIGNED_UPDATES=1` 后，未签名包也写入所选部署的更新源：打包会校验更新地址，写入不含 `publisherName` 的 `app-update.yml`，并在 `unsigned-artifacts/` 中写入带 `unsigned: true` 的完成记录，产物作为发行版的正式发布，文件名不带 `-unsigned` 后缀；`pnpm run upload:win:x64 --unsigned` 上传这些文件，并拒绝模式不一致的完成记录。已安装的更新器只校验它下载的清单中的 SHA-512，因此能写入清单或其存储的人可以在这些客户端上安装任意代码。所以生产部署要求 `DOWNLOAD_PROD_ORIGIN` 不是 `https://download.deepseek.com`，`--latest` 也拒绝未签名包。该开关取值为 `0` 或 `1`，只从目标平台的 dotenv 文件读取。
 
 ### Windows 安装界面
 

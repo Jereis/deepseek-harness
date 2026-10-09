@@ -112,8 +112,9 @@ export function createElectronBuilderConfig(
       ...packaged === undefined ? {} : { dshBuildCommit: packaged.commit, dshBuildDirty: packaged.dirty },
     },
     productName: brand.productName,
-    // Unsigned builds carry their own suffix so a shared file can never pass for a release artifact.
-    artifactName: `${brand.artifactPrefix}-\${version}-\${os}-\${arch}${unsigned ? '-unsigned' : ''}.\${ext}`,
+    // Unsigned builds without a feed carry their own suffix so a shared file can never pass for a release
+    // artifact; an unsigned build with a feed (DSH_DESKTOP_UNSIGNED_UPDATES) is the distribution's release.
+    artifactName: `${brand.artifactPrefix}-\${version}-\${os}-\${arch}${unsigned && update === undefined ? '-unsigned' : ''}.\${ext}`,
     directories: { output: unsigned ? buildPaths.unsignedArtifacts : buildPaths.artifacts },
     asar: true,
     electronDist: buildPaths.electron,
