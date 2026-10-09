@@ -22,6 +22,11 @@ export interface DesktopBrand {
    * installed the product. `false` keeps it to development builds.
    */
   readonly cliCommandMenu?: boolean
+  /**
+   * Port the Desktop Host listens on (`DSH_DESKTOP_PORT`), so a distribution can run
+   * beside upstream's Desktop; 0 lets the OS pick. Absent keeps upstream's 19387.
+   */
+  readonly desktopPort?: number
 }
 
 /** Upstream's identity; `scripts/desktop-brand.mjs` restates it for the build configuration. */

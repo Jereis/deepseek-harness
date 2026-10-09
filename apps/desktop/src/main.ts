@@ -90,6 +90,11 @@ if (DESKTOP_BRAND.homeDirName !== DEFAULT_DESKTOP_BRAND.homeDirName && !process.
   process.env.DSH_HOME = join(homedir(), DESKTOP_BRAND.homeDirName)
 }
 
+// A distribution's own Host port (brand.ts), unless the environment names one.
+if (DESKTOP_BRAND.desktopPort !== undefined && !process.env.DSH_DESKTOP_PORT?.trim()) {
+  process.env.DSH_DESKTOP_PORT = String(DESKTOP_BRAND.desktopPort)
+}
+
 function currentDesktopLocale(): ReturnType<typeof resolveDesktopLocale> {
   return resolveDesktopLocale(windowsLanguage ?? app.getLocale())
 }

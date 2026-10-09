@@ -33,6 +33,16 @@ export function readCarrierBundles(runtimeDir: string): string[] {
   return bundles as string[]
 }
 
+/**
+ * Port the Host listens on: `DSH_DESKTOP_PORT` when set (Electron sets it from the
+ * brand's `desktopPort`), Desktop's own 19387 otherwise. Web startup rejects a non-number.
+ * @param env - the Host's environment.
+ * @returns the `--port` argument.
+ */
+export function desktopPort(env: NodeJS.ProcessEnv): string {
+  return env.DSH_DESKTOP_PORT?.trim() || '19387'
+}
+
 async function main(): Promise<void> {
   const runtimeDir = process.argv[2] as string
   const projectDir = process.argv[3] as string
@@ -49,7 +59,7 @@ async function main(): Promise<void> {
     profile: 'desktop',
     resolvedProfile: { profile, installAnchor },
     patchFiles: [],
-    args: ['--no-open', '--port', '19387'],
+    args: ['--no-open', '--port', desktopPort(process.env)],
     ...(process.argv[5] === undefined ? {} : {
       packageManager: {
         command: process.execPath,

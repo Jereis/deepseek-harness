@@ -60,6 +60,16 @@ describe('desktop brand', () => {
     expect(() => readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile({ ...LANGTU, cliCommandMenu: 'no' }) })).toThrow('cliCommandMenu')
   })
 
+  it('reads an optional Host port, and none by default', () => {
+    expect(readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile({ ...LANGTU, desktopPort: 19388 }) }).brand).toEqual({ ...LANGTU, desktopPort: 19388 })
+    expect(readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile({ ...LANGTU, desktopPort: 0 }) }).brand).toEqual({ ...LANGTU, desktopPort: 0 })
+    expect(readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile(LANGTU) }).brand).not.toHaveProperty('desktopPort')
+  })
+
+  it.each([-1, 80, 65536, 1.5, '19388'])('rejects the Host port %j', (desktopPort) => {
+    expect(() => readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile({ ...LANGTU, desktopPort }) })).toThrow('desktopPort')
+  })
+
   it('reads an optional welcome delegate, and none without the member', () => {
     const welcome = { page: '/api/example/welcome', gate: 'example/welcome-gate' }
     expect(readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile({ ...LANGTU, welcome }) }).welcome).toEqual(welcome)
