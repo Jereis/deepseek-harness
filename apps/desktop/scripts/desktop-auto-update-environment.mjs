@@ -24,6 +24,11 @@ const UPDATE_ENVIRONMENTS = {
 
 const UPDATE_TARGETS = new Set(['mac-arm64', 'mac-x64', 'win-x64'])
 
+/** Object root shared by every deployment unless production names its own. */
+const DEFAULT_RELEASE_PREFIX = 'dsh-desk'
+const PRODUCTION_PREFIX_ENV = 'DOWNLOAD_PROD_KEY_PREFIX'
+const RELEASE_PREFIX = /^[a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)*$/u
+
 /**
  * Resolve the update deployment, defaulting local release work to test.
  * @param {NodeJS.ProcessEnv} env - Packaging or upload environment.
@@ -151,7 +156,7 @@ export function resolveDesktopUnsignedUpdates(env) {
  * @param {NodeJS.Platform} platform - Target Node.js platform.
  * @param {string} arch - Target Node.js architecture.
  * @returns {{ environment: 'test' | 'production', target: 'mac-arm64' | 'mac-x64' | 'win-x64', origin: string, publicUrl: string, keyPrefix: string, binaryKeyPrefix: string }} Resolved updater configuration.
- * @throws {Error} When the test deployment lacks a valid HTTPS origin or a 32-character lowercase hexadecimal release ID, or a configured production origin is invalid.
+ * @throws {Error} When the test deployment lacks a valid HTTPS origin or a 32-character lowercase hexadecimal release ID, or a configured production origin or object prefix is invalid.
  */
 export function resolveDesktopAutoUpdateConfig(env, platform, arch) {
   const environment = resolveDesktopAutoUpdateEnvironment(env)
@@ -163,8 +168,17 @@ export function resolveDesktopAutoUpdateConfig(env, platform, arch) {
   const origin = configured === undefined || configured === ''
     ? deployment.fixedOrigin ?? httpsOrigin(requiredEnvironmentValue(env, originEnvName), originEnvName)
     : httpsOrigin(configured, originEnvName)
-  let releasePrefix = 'dsh-desk'
-  if (environment === 'test') {
+  let releasePrefix = DEFAULT_RELEASE_PREFIX
+  if (environment === 'production') {
+    const configuredPrefix = env[PRODUCTION_PREFIX_ENV]?.trim()
+    if (configuredPrefix) {
+      if (!RELEASE_PREFIX.test(configuredPrefix)) {
+        throw new Error(`desktop auto-update: ${PRODUCTION_PREFIX_ENV} must be slash-separated lowercase letters, digits, and hyphens without leading or trailing slashes`)
+      }
+      releasePrefix = configuredPrefix
+    }
+  }
+  else {
     const releaseId = requiredEnvironmentValue(env, 'DOWNLOAD_TEST_RELEASE_ID')
     if (!/^[a-f0-9]{32}$/u.test(releaseId)) {
       throw new Error('desktop auto-update: DOWNLOAD_TEST_RELEASE_ID must contain 32 lowercase hexadecimal characters')

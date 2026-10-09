@@ -96,6 +96,33 @@ describe('desktop auto-update environment', () => {
     })
   })
 
+  it('publishes production feeds and binaries under a configured object prefix', () => {
+    expect(resolveDesktopAutoUpdateConfig({
+      DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
+      DOWNLOAD_PROD_ORIGIN: 'https://downloads.example.com',
+      DOWNLOAD_PROD_KEY_PREFIX: ' desktop ',
+    }, 'win32', 'x64')).toMatchObject({
+      publicUrl: 'https://downloads.example.com/desktop/feeds/win-x64/',
+      keyPrefix: 'desktop/feeds/win-x64',
+      binaryKeyPrefix: 'desktop/bin/win-x64',
+    })
+    expect(resolveDesktopAutoUpdateConfig({ DSH_DESKTOP_AUTO_UPDATE_ENV: 'production', DOWNLOAD_PROD_KEY_PREFIX: 'apps/desktop' },
+      'win32', 'x64').binaryKeyPrefix).toBe('apps/desktop/bin/win-x64')
+  })
+
+  it('keeps test paths under the default prefix when DOWNLOAD_PROD_KEY_PREFIX is set', () => {
+    expect(resolveDesktopAutoUpdateConfig({
+      DOWNLOAD_TEST_ORIGIN: 'https://updates.example.com',
+      DOWNLOAD_TEST_RELEASE_ID: RELEASE_ID,
+      DOWNLOAD_PROD_KEY_PREFIX: 'desktop',
+    }, 'win32', 'x64').keyPrefix).toBe(`dsh-desk/${RELEASE_ID}/feeds/win-x64`)
+  })
+
+  it.each(['/desktop', 'desktop/', 'Desktop', 'desk top', 'desktop//bin', '../desktop', 'desktop/..'])('rejects production object prefix %j', (prefix) => {
+    expect(() => resolveDesktopAutoUpdateConfig({ DSH_DESKTOP_AUTO_UPDATE_ENV: 'production', DOWNLOAD_PROD_KEY_PREFIX: prefix },
+      'win32', 'x64')).toThrow(/DOWNLOAD_PROD_KEY_PREFIX must be/u)
+  })
+
   it.each(['https://downloads.example.com/releases', 'http://downloads.example.com', 'https://user@downloads.example.com',
     'downloads.example.com'])('rejects production origin %s', (origin) => {
     expect(() => resolveDesktopAutoUpdateConfig({ DSH_DESKTOP_AUTO_UPDATE_ENV: 'production', DOWNLOAD_PROD_ORIGIN: origin },

@@ -141,6 +141,16 @@ describe('Desktop local packaging configuration', () => {
     })
   })
 
+  it('reads DOWNLOAD_PROD_KEY_PREFIX only from the platform file', async () => {
+    await withDirectory(async (directory) => {
+      await writeFile(join(directory, '.env.windows'), '')
+      expect(loadDesktopPackageEnvironment('win32', { DOWNLOAD_PROD_KEY_PREFIX: 'desktop' }, directory).DOWNLOAD_PROD_KEY_PREFIX)
+        .toBeUndefined()
+      await writeFile(join(directory, '.env.windows'), 'DOWNLOAD_PROD_KEY_PREFIX=desktop\n')
+      expect(loadDesktopPackageEnvironment('win32', {}, directory).DOWNLOAD_PROD_KEY_PREFIX).toBe('desktop')
+    })
+  })
+
   it('checks application and update configuration before Windows credentials while preserving unsigned and preparation modes', () => {
     expect(() => {
       validateDesktopPackageEnvironment({}, WINDOWS, { unsigned: true })
