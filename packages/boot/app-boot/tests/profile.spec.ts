@@ -17,6 +17,7 @@ import {
   createRuntimeResolution,
   getDshRuntimeVersion,
   initProfile,
+  loadContextProfile,
   loadProfile,
   loadProfileDirectory,
   PROFILE_COMPATIBILITY_FILENAME,
@@ -489,6 +490,28 @@ describe('loadProfile', () => {
     expect(plain.layers.map(layer => layer.packageName)).toEqual(['listed'])
     const plainResolution = await createRuntimeResolution({ installAnchor: anchor, profile: plain, home })
     expect(plainResolution.entries.find(entry => entry.name === 'carried-dep')).toBeUndefined()
+  })
+
+  it('keeps carrier rows when a reload reads the profile from its launch context', () => {
+    const anchor = stageInstallation({
+      carried: { patch: '- insert: [{ id: c, name: carried }]\n' },
+      listed: { patch: '- insert: [{ id: l, name: listed }]\n' },
+    })
+    const appManifest = JSON.parse(readFileSync(anchor, 'utf8')) as { dependencies: Record<string, string> }
+    delete appManifest.dependencies.carried
+    writeFileSync(anchor, JSON.stringify(appManifest))
+    const home = tmp()
+    const dir = resolveProfileDir('demo', home)
+    initProfile(dir, ['listed'])
+    const context = {
+      name: 'demo', dir, patchPath: join(dir, PROFILE_PATCH_FILENAME), installAnchor: anchor, home, cwd: home,
+      startedBundles: ['listed', 'carried'], carrierBundles: ['carried'], overlays: [], telemetryDisabledEnv: undefined,
+    }
+    // A reload passes no startup profile: plugin-manager, config-editor and hmr re-read the files.
+    expect(composeEntries([readProfilePatches('dsh', context)]).map(row => row.id)).toEqual(['l', 'c'])
+    expect(loadContextProfile('dsh', context).layers.map(layer => layer.packageName)).toEqual(['listed', 'carried'])
+    const { carrierBundles: _carriers, ...plain } = context
+    expect(composeEntries([readProfilePatches('dsh', plain)]).map(row => row.id)).toEqual(['l'])
   })
 
   it('still rejects invalid profile manifests and user patches', () => {

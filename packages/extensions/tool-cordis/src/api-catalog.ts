@@ -1775,6 +1775,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
       },
       {
+        signature: 'readonly carrierBundles?: readonly string[]',
+        description: 'Application-owned carrier bundles every read of this profile loads; the profile cannot drop them.',
+        parameters: [],
+      },
+      {
         signature: 'readonly overlays: readonly PatchOptions[]',
         description: 'Parsed command-line overlays, applied above profile and home patches.',
         parameters: [],

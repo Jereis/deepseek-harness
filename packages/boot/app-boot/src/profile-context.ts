@@ -23,6 +23,8 @@ export interface ProfileContext {
   readonly home: string
   /** Bundle packages used to start this process, before any persisted edits. */
   readonly startedBundles: readonly string[]
+  /** Application-owned carrier bundles every read of this profile loads; the profile cannot drop them. */
+  readonly carrierBundles?: readonly string[]
   /** Parsed command-line overlays, applied above profile and home patches. */
   readonly overlays: readonly PatchOptions[]
   /** Launch-time DSH_TELEMETRY_DISABLED value; any non-empty value opts out. */
@@ -54,6 +56,19 @@ export function resolveTelemetryPatch(disabledEnv: string | undefined, hasRow: b
   return { id: TELEMETRY_ROW_ID, disabled: true }
 }
 
+/**
+ * Load the current profile files with the carrier bundles the application started it with, so a
+ * reload reconciles the Loader against the same layers as startup.
+ * @param binName Diagnostic prefix for malformed or missing configuration.
+ * @param context Data supplied by the profile launcher.
+ * @param options `userLayer: false` skips reading `cordis.patch.yml`.
+ * @returns The loaded profile.
+ */
+export function loadContextProfile(binName: string, context: ProfileContext, options: { userLayer?: boolean } = {}): Profile {
+  return loadProfileDirectory(binName, context.dir, context.installAnchor,
+    context.carrierBundles === undefined ? options : { ...options, carrierBundles: context.carrierBundles })
+}
+
 /** Read current bundle and user layers with the launch-time overlays.
  * @param binName Diagnostic prefix for malformed or missing configuration.
  * @param context Data supplied by the profile launcher.
@@ -61,7 +76,7 @@ export function resolveTelemetryPatch(disabledEnv: string | undefined, hasRow: b
  * @returns Detached ordered patches; this function does not update the Loader.
  */
 export function readProfilePatches(binName: string, context: ProfileContext, initialProfile?: Profile): PatchOptions[] {
-  const profile = initialProfile ?? loadProfileDirectory(binName, context.dir, context.installAnchor, { userLayer: false })
+  const profile = initialProfile ?? loadContextProfile(binName, context, { userLayer: false })
   const patches = structuredClone([
     ...profile.layers.flatMap(layer => layer.patches),
     ...(initialProfile?.patches ?? loadOptionalPatches(binName, context.patchPath) ?? []),
