@@ -110,6 +110,13 @@ describe('desktop welcome Web operations', () => {
     await expect(backend.readGate('example/welcome-gate')).rejects.toThrow('invalid welcome gate answer')
   })
 
+  it('names the HTTP status and route when a delegated gate has no route', async () => {
+    const host = transport()
+    const backend = await connectDesktopWelcome(url, host.send)
+    host.send.mockResolvedValueOnce(new Response('not found', { status: 404 }))
+    await expect(backend.readGate('missing/welcome-gate')).rejects.toThrow('desktop welcome: Web request failed (HTTP 404 from /api/missing/welcome-gate)')
+  })
+
   it('submits native analytics through authenticated RPC with a bounded request', async () => {
     const host = transport()
     const backend = await connectDesktopWelcome(url, host.send)

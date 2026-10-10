@@ -65,6 +65,8 @@ import { DesktopBackgroundNotice } from './background-notice.ts'
 
 let focusPrimaryWindow = (): void => {}
 let stopForRecovery = async (): Promise<void> => {}
+/** Stderr tail of the latest Host child, for reports of failures that leave it running. */
+let runningHostStderr = (): string => ''
 let shuttingDown = false
 /**
  * Set by quit entries that must not ask: crash recovery exit and restart, and the
@@ -129,6 +131,8 @@ function persistCrashReport(error: unknown, source: CrashReportSource): Promise<
     phase: backendReady ? 'running' : 'startup',
     error,
     ...(error instanceof DesktopHostFatalError && error.diagnostic !== undefined ? { hostDiagnostic: error.diagnostic } : {}),
+    // Carrier and plugin skips print only to Host stderr, which a Host exit error already carries.
+    ...(source === 'host' || runningHostStderr().trim() === '' ? {} : { hostStderr: runningHostStderr().trim() }),
     rendererConsole: rendererConsole.snapshot(),
     app: {
       name: app.name, version: app.getVersion(), platform: process.platform, arch: process.arch,
@@ -464,6 +468,7 @@ async function main(): Promise<void> {
       hostInspectPort, { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion() }, onFailure,
       primaryRuntime,
       resources, (next) => { platformView.setSession(next) })
+    runningHostStderr = () => host.stderrTail()
     return {
       start: async () => {
         const ready = await host.start()

@@ -57,6 +57,13 @@ it('prints the Host diagnostic verbatim in its own section when the Host reporte
   expect(renderCrashReport(input())).not.toContain('--- host diagnostic')
 })
 
+it('prints the running Host stderr tail in its own section when the shell recorded one', () => {
+  const stderr = 'dsh: skipping carrier bundle "@example/bundle": Error: cannot resolve'
+  const text = renderCrashReport(input({ source: 'main', error: new Error('desktop welcome: Web request failed'), hostStderr: stderr }))
+  expect(text).toContain(`--- host stderr (recent output of the running Host) ---\n${stderr}\n\n--- renderer console`)
+  expect(renderCrashReport(input())).not.toContain('--- host stderr')
+})
+
 it('says so when no renderer console output was captured and keeps a long error message whole', () => {
   const text = renderCrashReport(input({ error: new Error('x'.repeat(20_000)) }))
   expect(text).toContain('(no error-level renderer console output was captured)')

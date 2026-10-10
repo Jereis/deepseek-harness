@@ -34,6 +34,8 @@ export interface CrashReportInput {
   readonly error: unknown
   /** The Host's own inspected error when it reported the failure over IPC before exiting. */
   readonly hostDiagnostic?: string
+  /** Stderr tail of a Host still running when the shell failed; a Host exit error already carries it in its message. */
+  readonly hostStderr?: string
   /** Recent renderer console lines at error level, oldest first. */
   readonly rendererConsole: readonly string[]
   readonly app: CrashReportApp
@@ -97,7 +99,8 @@ export function crashReportFileName(time: Date, source: CrashReportSource): stri
 
 /**
  * Render one report as plain text: a header of facts, the inspected error,
- * the Host's own diagnostic when it reported one, and the renderer console tail.
+ * the Host's own diagnostic when it reported one, the running Host's stderr tail
+ * when the shell recorded one, and the renderer console tail.
  * @param input - the failure and its context.
  * @returns the complete file content.
  */
@@ -123,6 +126,7 @@ export function renderCrashReport(input: CrashReportInput): string {
     boundedErrorSection(input.error),
     '',
     ...(input.hostDiagnostic === undefined ? [] : ['--- host diagnostic (as reported by the Host process) ---', input.hostDiagnostic, '']),
+    ...(input.hostStderr === undefined ? [] : ['--- host stderr (recent output of the running Host) ---', input.hostStderr, '']),
     '--- renderer console (error level, oldest first) ---',
     consoleSection,
     '',

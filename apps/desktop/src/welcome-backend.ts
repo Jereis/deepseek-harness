@@ -65,7 +65,7 @@ export async function connectDesktopWelcome(
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ type: 'client-request', rpcId, method, payload: { args: request.args } }),
     })
-    if (!response.ok) throw new Error('desktop welcome: Web request failed')
+    if (!response.ok) throw new Error(`desktop welcome: Web request failed (HTTP ${String(response.status)} from /api/${method})`)
     const envelope: unknown = await response.json()
     if (!record(envelope) || envelope.type !== 'server-response' || envelope.rpcId !== rpcId
       || !record(envelope.result) || envelope.result.ok !== true) {

@@ -307,6 +307,11 @@ export class DesktopHostProcess {
     }
   }
 
+  /** @returns the retained stderr tail of the current or last child, at most 64 KiB; empty when it wrote none. */
+  stderrTail(): string {
+    return this.stderr
+  }
+
   private fail(error: Error): void {
     this.onPlatformSession?.(null)
     this.readyReject(error)
