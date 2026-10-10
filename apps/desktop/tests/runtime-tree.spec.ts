@@ -31,6 +31,14 @@ it.each(['changed', 'same-size', 'extra', 'missing'])('checks %s runtime bytes o
   expect(readDesktopRuntime(dsh)).toEqual(before)
   await expect(verifyDesktopRuntime(dsh, '1.0.0')).rejects.toThrow(/integrity/u)
 })
+it('names the runtime files a build-time integrity failure found added, missing, or changed', async () => {
+  const dsh = join(fixture(), 'dsh')
+  writeFileSync(join(dsh, 'package.json'), '{}')
+  mkdirSync(join(dsh, 'node_modules', '__pycache__'))
+  writeFileSync(join(dsh, 'node_modules', '__pycache__', 'a.pyc'), '')
+  await expect(verifyDesktopRuntime(dsh, '1.0.0')).rejects.toThrow(
+    'desktop runtime: integrity verification failed: added node_modules/__pycache__/a.pyc, changed package.json')
+})
 it('rejects filesystem links and incompatible targets', async () => {
   const dsh = join(fixture(), 'dsh')
   await expect(verifyDesktopRuntime(dsh, '1.0.0', { platform: process.platform, arch: 'wrong' })).rejects.toThrow(/incompatible/u)

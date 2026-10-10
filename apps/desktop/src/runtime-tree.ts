@@ -208,7 +208,27 @@ export async function verifyDesktopRuntime(
   const comparable = (items: readonly DesktopRuntimeFile[]): unknown => process.platform === 'win32'
     ? items.map(({ executable: _executable, ...item }) => item) : items
   if (JSON.stringify(comparable(descriptor.files)) !== JSON.stringify(comparable(actual))) {
-    throw new Error('desktop runtime: integrity verification failed')
+    throw new Error(`desktop runtime: integrity verification failed: ${runtimeDifference(comparable, descriptor.files, actual)}`)
   }
   return descriptor
+}
+
+/** Most differing paths an integrity failure names; the rest are counted. */
+const DIFFERENCE_PATHS_SHOWN = 20
+
+function runtimeDifference(
+  comparable: (items: readonly DesktopRuntimeFile[]) => unknown,
+  recorded: readonly DesktopRuntimeFile[],
+  actual: readonly DesktopRuntimeFile[],
+): string {
+  const byPath = (items: readonly DesktopRuntimeFile[]) => new Map(items.map(item => [item.path, JSON.stringify(comparable([item]))]))
+  const before = byPath(recorded)
+  const after = byPath(actual)
+  const lines = [
+    ...[...after.keys()].filter(path => !before.has(path)).map(path => `added ${path}`),
+    ...[...before.keys()].filter(path => !after.has(path)).map(path => `missing ${path}`),
+    ...[...before].filter(([path, item]) => after.has(path) && after.get(path) !== item).map(([path]) => `changed ${path}`),
+  ]
+  const shown = lines.slice(0, DIFFERENCE_PATHS_SHOWN).join(', ')
+  return lines.length > DIFFERENCE_PATHS_SHOWN ? `${shown}, and ${String(lines.length - DIFFERENCE_PATHS_SHOWN)} more` : shown
 }
