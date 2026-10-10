@@ -15,6 +15,13 @@ export function directoryInstallSection(source: string): string
 export function directoryInstallerExits(source: string): string
 
 /**
+ * Name a brand's userData directory to the uninstaller, which then removes it in place of the package-name one.
+ * @param extraMetadata - electron-builder `extraMetadata`; `desktop-brand.mjs` validated `dshDesktopUserDataDir`.
+ * @returns `DSH_USER_DATA_DIR` define with Windows separators, or nothing when the brand keeps Electron's default.
+ */
+export function userDataDirDefine(extraMetadata: Readonly<Record<string, unknown>> | null | undefined): string
+
+/**
  * Keep user-data removal in the native helper, which refuses unsafe roots and never follows links.
  * @param source - Pinned upstream uninstaller source.
  * @returns Uninstaller with long-path application removal and no upstream RMDir data removal.

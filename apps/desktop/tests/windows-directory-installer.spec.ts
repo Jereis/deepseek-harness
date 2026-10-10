@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { expect, it } from 'vitest'
-import { directoryInstallerExits, directoryInstallSection, directoryUninstaller } from '../scripts/windows-directory-installer.mjs'
+import { directoryInstallerExits, directoryInstallSection, directoryUninstaller, userDataDirDefine } from '../scripts/windows-directory-installer.mjs'
 
 const require = createRequire(import.meta.url)
 const section = readFileSync(join(dirname(require.resolve('app-builder-lib/package.json')),
@@ -49,3 +49,9 @@ it.each(['!include installer.nsh', '!insertmacro setLinkVars', '!insertmacro ins
     expect(() => directoryInstallSection(`${section}\n${point}`)).toThrow('Desktop NSIS template changed')
   },
 )
+
+it('defines a brand userData directory for the uninstaller with Windows separators, and nothing without one', () => {
+  expect(userDataDirDefine({ dshDesktopUserDataDir: 'LangtuAssistant/desktop' })).toBe('!define DSH_USER_DATA_DIR "LangtuAssistant\\desktop"\n')
+  expect(userDataDirDefine({ dshDesktopAppId: 'com.example.app' })).toBe('')
+  expect(userDataDirDefine(undefined)).toBe('')
+})

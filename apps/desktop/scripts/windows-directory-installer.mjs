@@ -80,8 +80,18 @@ export function installWindowsDirectoryInstaller() {
     const uninstaller = join(directory, 'uninstaller.nsh')
     await writeFile(uninstaller, directoryUninstaller(await readFile(join(templates, 'uninstaller.nsh'), 'utf8')))
     adapted = replaceOnce(adapted, '!include "uninstaller.nsh"', `!include "${uninstaller}"`)
-    return `!define DSH_UPDATER_CACHE_NAME "${this.packager.appInfo.updaterCacheDirName}"\n!define DSH_SEVENZIP_PATH "${tool}"\n!define DSH_SEVENZIP_LICENSE_DIR "${dirname(dirname(sourceTool))}"\n${await compute.call(this, adapted, ...args)}`
+    return `${userDataDirDefine(this.packager.config.extraMetadata)}!define DSH_UPDATER_CACHE_NAME "${this.packager.appInfo.updaterCacheDirName}"\n!define DSH_SEVENZIP_PATH "${tool}"\n!define DSH_SEVENZIP_LICENSE_DIR "${dirname(dirname(sourceTool))}"\n${await compute.call(this, adapted, ...args)}`
   }
+}
+
+/**
+ * Name a brand's userData directory to the uninstaller, which then removes it in place of the package-name one.
+ * @param {Record<string, unknown> | null | undefined} extraMetadata - electron-builder `extraMetadata`; `desktop-brand.mjs` validated `dshDesktopUserDataDir`.
+ * @returns {string} `DSH_USER_DATA_DIR` define with Windows separators, or nothing when the brand keeps Electron's default.
+ */
+export function userDataDirDefine(extraMetadata) {
+  const directory = extraMetadata?.dshDesktopUserDataDir
+  return typeof directory === 'string' ? `!define DSH_USER_DATA_DIR "${directory.replaceAll('/', '\\')}"\n` : ''
 }
 
 /**

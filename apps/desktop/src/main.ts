@@ -81,6 +81,12 @@ let backendReady = false
 /** Error-level console output of the primary window, attached to crash reports. */
 const rendererConsole = new RendererConsoleTail()
 
+// A distribution's own userData (brand.ts), unless a launcher passed --user-data-dir; set first because
+// the logs directory, the single-instance lock and the Web session storage all derive from it.
+if (DESKTOP_BRAND.userDataDir !== undefined && !app.commandLine.hasSwitch('user-data-dir')) {
+  app.setPath('userData', join(app.getPath('appData'), ...DESKTOP_BRAND.userDataDir.split('/')))
+}
+
 // Platform-conventional logs directory (macOS ~/Library/Logs/<name>, otherwise under userData);
 // set before ready so the first fatal report already resolves under it.
 app.setAppLogsPath()

@@ -18,6 +18,9 @@ const WELCOME_PAGE = /^\/(?:[A-Za-z0-9_~-][A-Za-z0-9._~-]*\/?)*$/u
 /** Host `/api` RPC method of a delegated welcome gate, in Connection's `segment/segment` grammar. */
 const WELCOME_GATE = /^[A-Za-z0-9_$.-]+(?:\/[A-Za-z0-9_$.-]+)+$/u
 
+/** userData path relative to the application-data directory: 1–4 plain segments joined by `/`. */
+const USER_DATA_DIR = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}(?:\/[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}){0,3}$/u
+
 const PATTERNS = {
   productName: /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/u,
   protocolScheme: /^[a-z][a-z0-9+.-]{1,31}$/u,
@@ -32,7 +35,8 @@ const PATTERNS = {
  * (`page`: application-origin path the welcome window loads; `gate`: Host `/api` RPC
  * method answering whether the welcome entry is required; see `src/welcome-delegate.ts`),
  * `cliCommandMenu` (`false` keeps the command-line manager out of installed builds' menu),
- * and `desktopPort` (the Host's listen port: an integer, 0 or 1024–65535, 0 letting the OS pick).
+ * `desktopPort` (the Host's listen port: an integer, 0 or 1024–65535, 0 letting the OS pick),
+ * and `userDataDir` (Electron userData relative to the application-data directory, 1–4 `/`-separated segments).
  * DSH_DESKTOP_DISPLAY_VERSION, a semantic version, becomes the brand's displayed `version`.
  * @param {NodeJS.ProcessEnv} env - build environment.
  * @returns {{ brand: import('../src/brand.ts').DesktopBrand, icons: { windows?: string, macos?: string }, shortcutName?: string, welcome?: import('../src/welcome-delegate.ts').DesktopWelcomeDelegate }}
@@ -72,6 +76,10 @@ export function readDesktopBrand(env = process.env) {
   if (value.desktopPort !== undefined && !(Number.isInteger(value.desktopPort) && (value.desktopPort === 0 || (value.desktopPort >= 1024 && value.desktopPort <= 65535)))) {
     throw fail('desktopPort must be 0 or an integer from 1024 to 65535')
   }
+  if (value.userDataDir !== undefined && (typeof value.userDataDir !== 'string' || !USER_DATA_DIR.test(value.userDataDir)
+    || value.userDataDir.split('/').some(segment => segment.endsWith('.') || segment.endsWith(' ')))) {
+    throw fail(`userDataDir must match ${USER_DATA_DIR} with no segment ending in a dot or space`)
+  }
   const version = env.DSH_DESKTOP_DISPLAY_VERSION?.trim()
   if (version && valid(version) === null) throw new Error('desktop brand: DSH_DESKTOP_DISPLAY_VERSION must be a semantic version')
   const brand = Object.freeze({
@@ -83,6 +91,7 @@ export function readDesktopBrand(env = process.env) {
     ...(version ? { version } : {}),
     ...(value.cliCommandMenu === undefined ? {} : { cliCommandMenu: value.cliCommandMenu }),
     ...(value.desktopPort === undefined ? {} : { desktopPort: value.desktopPort }),
+    ...(value.userDataDir === undefined ? {} : { userDataDir: value.userDataDir }),
   })
   return {
     brand,

@@ -26,6 +26,24 @@ function brandFile(value: unknown): string {
   return path
 }
 
+function packageConfig(brand: unknown) {
+  return createElectronBuilderConfig({
+    DSH_DESKTOP_BRAND_FILE: brandFile(brand),
+    DSH_DESKTOP_APP_ID: 'cn.hxltw.langtu.assistant',
+    DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN: 'https://policy.example.com',
+    DSH_DESKTOP_MANDATORY_UPDATE_CONFIG: JSON.stringify({ allowedAuthOrigins: ['https://login.example.com'] }),
+    DSH_DESKTOP_TARGET_PLATFORM: 'win32',
+    DSH_DESKTOP_TARGET_ARCH: 'x64',
+    DSH_DESKTOP_UNSIGNED: '1',
+  }, 'win32', 'x64') as unknown as {
+    productName: string
+    protocols: { name: string; schemes: string[] }[]
+    artifactName: string
+    nsis: { shortcutName?: string }
+    extraMetadata: Record<string, unknown>
+  }
+}
+
 describe('desktop brand', () => {
   it('keeps upstream identity when no brand is compiled in, and the build default in step with it', () => {
     expect(DESKTOP_BRAND).toEqual(DEFAULT_DESKTOP_BRAND)
@@ -70,6 +88,18 @@ describe('desktop brand', () => {
     expect(() => readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile({ ...LANGTU, desktopPort }) })).toThrow('desktopPort')
   })
 
+  it('reads an optional userData directory, and none by default', () => {
+    expect(readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile({ ...LANGTU, userDataDir: 'LangtuAssistant/desktop' }) }).brand)
+      .toEqual({ ...LANGTU, userDataDir: 'LangtuAssistant/desktop' })
+    expect(readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile({ ...LANGTU, userDataDir: 'Langtu Assistant' }) }).brand.userDataDir).toBe('Langtu Assistant')
+    expect(readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile(LANGTU) }).brand).not.toHaveProperty('userDataDir')
+  })
+
+  it.each(['', '../escape', 'a/../b', '/absolute', 'C:/absolute', 'a\\b', 'a//b', 'a/', 'a/b/c/d/e', 'a "b"', '$APPDATA', 'trailing.', 'trailing /b', 7])(
+    'rejects the userData directory %j', (userDataDir) => {
+      expect(() => readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile({ ...LANGTU, userDataDir }) })).toThrow('userDataDir')
+    })
+
   it('reads an optional welcome delegate, and none without the member', () => {
     const welcome = { page: '/api/example/welcome', gate: 'example/welcome-gate' }
     expect(readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile({ ...LANGTU, welcome }) }).welcome).toEqual(welcome)
@@ -98,24 +128,16 @@ describe('desktop brand', () => {
   })
 
   it('names the package, protocol, artifacts and shortcut from the brand', () => {
-    const file = brandFile({ ...LANGTU, shortcutName: '廊图网小助手' })
-    const config = createElectronBuilderConfig({
-      DSH_DESKTOP_BRAND_FILE: file,
-      DSH_DESKTOP_APP_ID: 'cn.hxltw.langtu.assistant',
-      DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN: 'https://policy.example.com',
-      DSH_DESKTOP_MANDATORY_UPDATE_CONFIG: JSON.stringify({ allowedAuthOrigins: ['https://login.example.com'] }),
-      DSH_DESKTOP_TARGET_PLATFORM: 'win32',
-      DSH_DESKTOP_TARGET_ARCH: 'x64',
-      DSH_DESKTOP_UNSIGNED: '1',
-    }, 'win32', 'x64') as unknown as {
-      productName: string
-      protocols: { name: string; schemes: string[] }[]
-      artifactName: string
-      nsis: { shortcutName?: string }
-    }
+    const config = packageConfig({ ...LANGTU, shortcutName: '廊图网小助手' })
     expect(config.productName).toBe('LangtuAssistant')
     expect(config.protocols).toEqual([{ name: 'Langtu Assistant', schemes: ['langtu'] }])
     expect(config.artifactName.startsWith('langtu-assistant-')).toBe(true)
     expect(config.nsis.shortcutName).toBe('廊图网小助手')
+    expect(config.extraMetadata).not.toHaveProperty('dshDesktopUserDataDir')
+  })
+
+  it('hands the brand userData directory to the uninstaller through the packaged manifest', () => {
+    expect(packageConfig({ ...LANGTU, userDataDir: 'LangtuAssistant/desktop' }).extraMetadata.dshDesktopUserDataDir)
+      .toBe('LangtuAssistant/desktop')
   })
 })

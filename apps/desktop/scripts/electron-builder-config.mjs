@@ -107,6 +107,8 @@ export function createElectronBuilderConfig(
     protocols: [{ name: brand.displayName.en, schemes: [brand.protocolScheme] }],
     extraMetadata: {
       dshDesktopAppId: appId,
+      // The uninstaller removes this userData instead of the package-name one (windows-directory-installer.mjs).
+      ...brand.userDataDir === undefined ? {} : { dshDesktopUserDataDir: brand.userDataDir },
       dshMandatoryUpdatePolicy: policy,
       ...buildVersion === productVersion ? {} : { version: buildVersion },
       ...packaged === undefined ? {} : { dshBuildCommit: packaged.commit, dshBuildDirty: packaged.dirty },

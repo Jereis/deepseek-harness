@@ -25,7 +25,12 @@ Function un.CleanData
   ClearErrors
   StrCpy $UnTarget "$APPDATA\${PRODUCT_FILENAME}"
   Call un.RemoveData
-  !ifdef APP_PACKAGE_NAME
+  !ifdef DSH_USER_DATA_DIR
+    ; A brand's own userData (brand.ts userDataDir); the package-name directory may belong to another product.
+    StrCpy $UnTarget "$APPDATA\${DSH_USER_DATA_DIR}"
+    Call un.RemoveData
+    System::Call '$PLUGINSDIR\window-frame.dll::UninstallRemoveEmptyParents(w "$UnTarget", w "$APPDATA") ?c'
+  !else ifdef APP_PACKAGE_NAME
     ; Electron derives user data from the package name; a scoped name nests it one directory deeper.
     StrCpy $UnTarget "$APPDATA\${APP_PACKAGE_NAME}"
     Call un.RemoveData
