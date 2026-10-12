@@ -392,13 +392,15 @@ function collectInstallationScopePackages(
   // map itself (first resolution wins, matching Node's own nearest-wins).
   const queue: { anchor: string; manifest: ProfileManifest }[] = [{ anchor: canonicalAnchor, manifest: appManifest }]
   // Carrier bundles are application-owned installation packages: each is declared by the
-  // installation itself, and its dependencies resolve after the dsh closure's own.
+  // installation itself, and its dependencies resolve after the dsh closure's own. The declarer
+  // is the anchor as given: carriers were found from it, while the canonical anchor of a linked
+  // dsh package (the Desktop development runtime) is a workspace directory without them.
   for (const layer of carrierLayers) {
     if (links.has(layer.packageName)) continue
     const manifestPath = join(realModuleDirectory(layer.packageDir), 'package.json')
     const manifest = readPackageManifest(manifestPath)
     links.set(layer.packageName, layer.packageDir)
-    declarers.set(layer.packageName, canonicalAnchor)
+    declarers.set(layer.packageName, installAnchor)
     versions.set(layer.packageName, manifest.version)
     queue.push({ anchor: manifestPath, manifest })
   }

@@ -5,7 +5,7 @@
  */
 
 import {
-  existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync,
+  cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createRequire } from 'node:module'
@@ -490,6 +490,24 @@ describe('loadProfile', () => {
     expect(plain.layers.map(layer => layer.packageName)).toEqual(['listed'])
     const plainResolution = await createRuntimeResolution({ installAnchor: anchor, profile: plain, home })
     expect(plainResolution.entries.find(entry => entry.name === 'carried-dep')).toBeUndefined()
+  })
+
+  it('imports a carrier bundle when the installation links the dsh package from elsewhere', async () => {
+    // The Desktop development runtime links @deepseek-ai/dsh to the workspace CLI and copies carriers beside it.
+    const cliAnchor = stageInstallation({}, 'dsh-cli')
+    const carrierAnchor = stageInstallation({ carried: { patch: '- insert: [{ id: c, name: carried }]\n' } })
+    const runtime = tmp()
+    mkdirSync(join(runtime, 'node_modules'), { recursive: true })
+    symlinkSync(join(cliAnchor, '..'), join(runtime, 'node_modules', 'dsh-cli'), 'junction')
+    cpSync(join(carrierAnchor, '..', 'node_modules', 'carried'), join(runtime, 'node_modules', 'carried'), { recursive: true })
+    const anchor = join(runtime, 'node_modules', 'dsh-cli', 'package.json')
+    const home = tmp()
+    const dir = resolveProfileDir('demo', home)
+    initProfile(dir, [])
+
+    const profile = loadProfileDirectory('dsh', dir, anchor, { carrierBundles: ['carried'] })
+    const resolution = await createRuntimeResolution({ installAnchor: anchor, profile, home })
+    await expect(importFromResolution(resolution, 'carried')).resolves.toMatchObject({ packageName: 'carried' })
   })
 
   it('keeps carrier rows when a reload reads the profile from its launch context', () => {
