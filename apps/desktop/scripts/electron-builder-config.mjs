@@ -28,6 +28,7 @@ import { desktopTargetBuildPaths, resolveDesktopBuildTarget } from './desktop-bu
 import { installWindowsDirectoryInstaller } from './windows-directory-installer.mjs'
 import { preserveWindowsRuntimeSignature, signWindowsCode } from './windows-runtime-signature.mjs'
 import { prepareWindowsAsarUnpack, verifyWindowsAsarUnpack } from './windows-asar-unpack.mjs'
+import { carrierAsarUnpackPatterns } from './carrier-asar-unpack.mjs'
 import { recordPackagingEvent } from './packaging-run.mjs'
 import {
   resolveMacOSAppUpdateFeed,
@@ -177,7 +178,10 @@ export function createElectronBuilderConfig(
     },
     beforePack: async context => {
       const office = await officePackageDirectories(buildPaths.dsh, { platform: resolvedPlatform, arch: resolvedArch })
-      const patterns = office.map(directory => `**/${relative(buildPaths.dsh, directory).split(sep).join('/')}/**/*`)
+      const patterns = [
+        ...office.map(directory => `**/${relative(buildPaths.dsh, directory).split(sep).join('/')}/**/*`),
+        ...await carrierAsarUnpackPatterns(buildPaths.dsh),
+      ]
       const existing = context.packager.config.asarUnpack ?? []
       context.packager.config.asarUnpack = [...(typeof existing === 'string' ? [existing] : existing), ...patterns]
       if (packagesWindows) windowsCode = await prepareWindowsAsarUnpack(context, buildPaths.dsh)

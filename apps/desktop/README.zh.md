@@ -235,7 +235,7 @@ macOS arm64 命令要求 Apple Silicon。macOS x64 命令可以在 Intel macOS �
 
 每个目标都在 `apps/desktop/.desktop-build/targets/<target>/` 下持有自己的打包输入、已准备运行时、包集合、dsh 依赖树、pnpm 准备状态、未打包应用、更新元数据和最终产物。Electron 归档缓存继续由 `.desktop-build/downloads` 共享，因为每个归档文件名都包含版本、平台和架构，并且在解包前经过验证。目标构建绝不读取其他目标的可变准备状态。
 
-下游发行版可以把自己的 bundle 随运行时一起发布。`DSH_DESKTOP_CARRIER_PACKAGES` 按加载顺序列出打包好的 `.tgz` 包，分隔方式与 `PATH` 相同；每个包的 manifest 必须声明 `dsh.bundle`，且不能是核心包。`prepare:dsh` 把它们加为运行时项目的依赖，因此它们自己的依赖会一并安装，`@deepseek-ai/*` 依赖与 peer 解析到核心包集合；随后把包名写入运行时 `package.json` 的 `dsh.carrier.bundles`。Desktop Host 在 profile 自身的 bundle 之后加载它们，与开发模式携带 `DSH_DESKTOP_CARRIER_BUNDLES` 目录的方式相同；运行时文件清单与 Host 冒烟检查同样覆盖它们。该变量从打包环境读取，不从目标平台的 dotenv 文件读取。
+下游发行版可以把自己的 bundle 随运行时一起发布。`DSH_DESKTOP_CARRIER_PACKAGES` 按加载顺序列出打包好的 `.tgz` 包，分隔方式与 `PATH` 相同；每个包的 manifest 必须声明 `dsh.bundle`，且不能是核心包。`prepare:dsh` 把它们加为运行时项目的依赖，因此它们自己的依赖会一并安装，`@deepseek-ai/*` 依赖与 peer 解析到核心包集合；随后把包名写入运行时 `package.json` 的 `dsh.carrier.bundles`。Desktop Host 在 profile 自身的 bundle 之后加载它们，与开发模式携带 `DSH_DESKTOP_CARRIER_BUNDLES` 目录的方式相同；运行时文件清单与 Host 冒烟检查同样覆盖它们。该变量从打包环境读取，不从目标平台的 dotenv 文件读取。如果 carrier bundle 的文件要交给其他进程打开（例如由 Python 解释器运行的内置服务端），就在 `dsh.desktop.asarUnpack` 中以相对包目录的 glob 列出；打包时这些文件放在 `app.asar.unpacked`，bundle 运行时也到那里解析路径，因为子进程无法读取 `app.asar` 内部。
 
 ### 运行时文件筛选
 

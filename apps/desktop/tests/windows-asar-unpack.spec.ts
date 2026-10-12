@@ -84,6 +84,15 @@ async function fixture(external: boolean) {
     await writeFile(join(directory, 'package.json'), JSON.stringify(manifest))
     await writeFile(join(directory, 'cli.js'), 'export {}')
   }
+  // The prepared project lists one carrier bundle whose vendored server another process runs.
+  await writeFile(join(source, 'package.json'), JSON.stringify({ dsh: { carrier: { bundles: ['@acme/models'] } } }))
+  const carrier = join(source, 'node_modules', '@acme', 'models')
+  await mkdir(join(carrier, 'vendor'), { recursive: true })
+  await writeFile(join(carrier, 'package.json'), JSON.stringify({
+    name: '@acme/models', dsh: { bundle: {}, desktop: { asarUnpack: ['vendor/**/*'] } },
+  }))
+  await writeFile(join(carrier, 'index.js'), 'export {}')
+  await writeFile(join(carrier, 'vendor', 'server.py'), 'print()')
   const config = {
     files: [{ from: source, to: 'dsh', filter: ['**/*'] },
       { from: join(source, 'node_modules'), to: 'dsh/node_modules', filter: ['**/*'] }],
@@ -252,6 +261,10 @@ it.each([false, true])('keeps the complete Office engine outside ASAR with exter
     expect(archive.getFile(join('dsh', engine, file), false).unpacked).toBe(true)
     expect(await readFile(join(input.resources, 'app.asar.unpacked', 'dsh', engine, file), 'utf8')).toBe('{}')
   }
+  const carrier = join('dsh', 'node_modules', '@acme', 'models')
+  expect(archive.getFile(join(carrier, 'index.js')).unpacked).not.toBe(true)
+  expect(archive.getFile(join(carrier, 'vendor', 'server.py'), false).unpacked).toBe(true)
+  expect(await readFile(join(input.resources, 'app.asar.unpacked', carrier, 'vendor', 'server.py'), 'utf8')).toBe('print()')
 })
 
 async function seal(input: Awaited<ReturnType<typeof fixture>>): Promise<DesktopRuntimeDescriptor> {
