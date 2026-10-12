@@ -289,6 +289,27 @@ it('recomposes the remaining layers while another bundle is broken and mounts it
   expect((await manager.listBundles()).find(row => row.name === 'extra')?.error).toBeUndefined()
 })
 
+it.each([false, true])('lists the application s carrier bundles read-only only when configured (%s)', async (listCarrierBundles) => {
+  const { manager, profile } = await fixture('live', false, undefined, { listCarrierBundles })
+  const carried = join(profile.home, 'node_modules', 'carried')
+  mkdirSync(carried, { recursive: true })
+  writeFileSync(join(carried, 'package.json'), JSON.stringify({
+    name: 'carried', version: '2.0.0', description: 'Carried bundle', dsh: { bundle: { patch: './cordis.patch.yml' } },
+  }))
+  writeFileSync(join(carried, 'cordis.patch.yml'), JSON.stringify([{ insert: [{ id: 'carried-row', name: './plugin.mjs' }] }]))
+  Object.assign(profile, { carrierBundles: ['carried', 'absent'] })
+  const rows = (await manager.listBundles()).filter(row => row.name === 'carried' || row.name === 'absent')
+  if (!listCarrierBundles) {
+    expect(rows).toEqual([])
+    return
+  }
+  expect(rows).toMatchObject([
+    { name: 'carried', version: '2.0.0', description: 'Carried bundle', enabled: true, installed: false, optional: false,
+      removable: false, readOnlyReason: 'carrier', rows: [{ rowId: 'carried-row' }] },
+    { name: 'absent', enabled: true, readOnlyReason: 'carrier', error: { code: 'operation-error' }, rows: [] },
+  ])
+})
+
 it('lists bundle versions and current-profile plugin targets', async () => {
   const { manager, dir } = await fixture()
   const plugins = await manager.listPlugins()

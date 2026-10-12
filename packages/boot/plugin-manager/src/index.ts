@@ -58,6 +58,11 @@ export interface Config {
    * unless that is npm's own registry or one of these.
    */
   fallbackRegistries?: string[]
+  /**
+   * Also list the application's carrier bundles, read-only with reason `carrier`: they always load, and the
+   * profile can neither select nor remove them. Off, they are absent from `listBundles`.
+   */
+  listCarrierBundles?: boolean
 }
 
 /** An http(s) URL, as pnpm's `--registry` takes it. */
@@ -184,6 +189,7 @@ export class PluginManager extends TypertRemoteService {
     idleTimeoutMs: z.number().step(1).min(1000).default(600000),
     registry: z.string().pattern(REGISTRY_URL),
     fallbackRegistries: z.array(z.string().pattern(REGISTRY_URL)).default([NPMMIRROR_REGISTRY]),
+    listCarrierBundles: z.boolean().default(false),
   })
   /** Management bundles remain protected if their files become unreadable. */
   private readonly managementBundles = new Set<string>()
@@ -196,6 +202,7 @@ export class PluginManager extends TypertRemoteService {
   private readonly githubConnectionTimeoutMs: number
   private readonly idleTimeoutMs: number
   private readonly pnpmCommand: string
+  private readonly listCarrierBundles: boolean
   private readonly configuredRegistries: Omit<PluginRegistries, 'resolved'>
   private readonly ownerContext: Context
   private readonly abort = new AbortController()
@@ -214,6 +221,7 @@ export class PluginManager extends TypertRemoteService {
     this.githubConnectionTimeoutMs = (config as Required<Config>).githubConnectionTimeoutMs
     this.idleTimeoutMs = (config as Required<Config>).idleTimeoutMs
     this.pnpmCommand = (config as Required<Config>).pnpmCommand
+    this.listCarrierBundles = (config as Required<Config>).listCarrierBundles
     this.configuredRegistries = {
       registry: config.registry === undefined ? null : normalizeRegistry(config.registry),
       fallbackRegistries: (config as Required<Config>).fallbackRegistries.map(normalizeRegistry),
@@ -315,7 +323,29 @@ export class PluginManager extends TypertRemoteService {
         }
       }
     }
+    if (this.listCarrierBundles) bundles.push(...this.carrierBundles(names))
     return Promise.resolve(bundles)
+  }
+
+  /** The application's carrier bundles that no profile or installation name already lists, read-only. */
+  private carrierBundles(listed: readonly string[]): BundleInfo[] {
+    const bundles: BundleInfo[] = []
+    for (const name of this.profile.carrierBundles ?? []) {
+      if (listed.includes(name)) continue
+      const common = { name, enabled: true, installed: false, optional: false, removable: false, readOnlyReason: 'carrier' as const }
+      try {
+        const info = bundleManifest(name, this.profile.dir, this.profile.installAnchor)
+        if (info === undefined) throw new ManagementFailure('not-bundle')
+        const dir = resolveBundleDir('dsh', name, this.profile.installAnchor, this.profile.dir)
+        const meta = readPluginMeta(info.name ?? name, pathToFileURL(join(dir, 'package.json')).href)
+        bundles.push({ ...common, ...(info.version === undefined ? {} : { version: info.version }),
+          ...(info.description === undefined || info.description === '' ? {} : { description: info.description }),
+          ...meta === undefined ? {} : { meta }, ...this.declaredRows(name, info) })
+      } catch (error) {
+        bundles.push({ ...common, error: managementError(error), rows: [], overrides: [] })
+      }
+    }
+    return bundles
   }
 
   /** Read the registries this manager asks: the configured first one, its fallbacks in order, and what pnpm's own configuration names.
