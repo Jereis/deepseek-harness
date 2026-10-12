@@ -435,6 +435,22 @@ describe('PluginManagerPage', () => {
     expect([...document.querySelectorAll('[data-plugin-count]')].map(count => count.textContent)).toEqual(['1', '2'])
   })
 
+  it('lists a carrier bundle the Host reports in the Installed group, locked with its reason and no uninstall', () => {
+    renderTab({
+      packages: [
+        pkg({ name: '@acme/dsh-carried', installed: false, readOnlyReason: 'carrier' }),
+        pkg({ name: '@acme/dsh-shipped', installed: false }),
+      ],
+    })
+    expect(screen.getAllByRole('listitem').map(card => card.getAttribute('data-plugin-package'))).toEqual(['@acme/dsh-carried'])
+    const locked = screen.getByRole('switch', { name: en.enableToggle.replace('{name}', '@acme/dsh-carried') })
+    expect(locked).toHaveProperty('disabled', true)
+    expect(locked.getAttribute('title')).toBe(en.reasonCarrier)
+    fireEvent.click(screen.getByText('@acme/dsh-carried'))
+    expect(screen.getByRole('status').textContent).toBe(en.reasonCarrier)
+    expect(screen.queryByRole('button', { name: en.uninstall })).toBeNull()
+  })
+
   it.each([false, true])('shows an empty list for built-in bundles with errors and installed=%s', (installed) => {
     renderTab({
       packages: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'].map(name => pkg({

@@ -1275,10 +1275,10 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
   const noticeLine = state.notice === null || state.notice.kind === 'refresh-failed' ? null : noticeText(state.notice, t)
 
   // The page manages what the person installed, what the installation ships for them to switch on, and a
-  // selected name the Host cannot read; the installation's other bundles are inspected in the Settings
-  // Plugins section's Plugin list tab.
+  // selected name the Host cannot read, and shows the carrier bundles the Host lists read-only; the
+  // installation's other bundles are inspected in the Settings Plugins section's Plugin list tab.
   const listed = state.packages.filter(pkg => !BUILTIN_PROFILE_BUNDLES.has(pkg.name)
-    && (pkg.installed || pkg.optional || pkg.error !== undefined))
+    && (pkg.installed || pkg.optional || pkg.error !== undefined || pkg.readOnlyReason === 'carrier'))
   const mine = listed.filter(pkg => pkg.installed || !pkg.optional)
   const official = listed.filter(pkg => pkg.optional && !pkg.installed)
   const loaded = state.status === 'ready' || state.status === 'error'
