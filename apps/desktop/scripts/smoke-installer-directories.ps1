@@ -81,6 +81,18 @@ try {
     if (@(Get-ChildItem -LiteralPath $caseRoot -Directory | Where-Object Name -notin @('Application', 'installer-logs')).Count -ne 0) {
       throw "Directory smoke $mode left transaction directories behind"
     }
+    if ($FrameLibrary -and $mode -in @('first', 'upgrade')) {
+      # The installation carries its own access list; inherited entries can hold SIDs that stop Chromium's GPU sandbox.
+      $acl = Get-Acl -LiteralPath $target
+      if (-not $acl.AreAccessRulesProtected -or @($acl.Access | Where-Object IsInherited).Count -ne 0) {
+        throw "Directory smoke $mode kept inherited permissions on the installation"
+      }
+      $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+      $userRules = @($acl.Access | Where-Object {
+        $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]) -eq $user -and $_.FileSystemRights -eq 'FullControl'
+      })
+      if ($userRules.Count -eq 0) { throw "Directory smoke $mode did not grant the installing user full control" }
+    }
     if ($FrameLibrary) {
       # Only an extraction failure writes a report; it must quote 7-Zip's verdict so support can read the cause.
       $reports = @(if (Test-Path -LiteralPath $reportDir) { Get-ChildItem -LiteralPath $reportDir -File })

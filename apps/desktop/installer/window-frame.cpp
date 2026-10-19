@@ -14,6 +14,7 @@
 #include "extract.h"
 #include "extract-report.h"
 #include "uninstall-data.h"
+#include "install-directory.h"
 
 using namespace Gdiplus;
 
@@ -49,6 +50,11 @@ extern "C" __declspec(dllexport) DWORD __cdecl UninstallRemoveData(LPCWSTR path,
 // Returns a Win32 error code; only ordinary empty directories strictly below the stop directory are removed.
 extern "C" __declspec(dllexport) DWORD __cdecl UninstallRemoveEmptyParents(LPCWSTR path, LPCWSTR stop) {
     return uninstall_data::RemoveEmptyParents(path, stop);
+}
+
+// Returns a Win32 error code; the directory keeps only SYSTEM, Administrators, and the installing user.
+extern "C" __declspec(dllexport) DWORD __cdecl InstallerProtectDirectory(LPCWSTR path) {
+    return install_directory::Protect(path);
 }
 
 // Match the affected executable, not another user's or directory's same-named application.

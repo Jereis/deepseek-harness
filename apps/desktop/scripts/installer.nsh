@@ -119,6 +119,15 @@ ManifestDPIAware true
   Pop $0
 !macroend
 
+; Unresolvable AppContainer SIDs inherited from %LOCALAPPDATA% stop Chromium's GPU sandbox, so the staged directory
+; carries its own access list; the rename into place keeps it. A failure leaves the inherited one and continues.
+!macro customInstallerProtectDirectory Directory
+  System::Call '$PLUGINSDIR\window-frame.dll::InstallerProtectDirectory(w "${Directory}") i.r1 ?c'
+  ${If} $1 != 0
+    DetailPrint "Install directory permissions unchanged: Win32 error $1"
+  ${EndIf}
+!macroend
+
 !macro customInstallerExtract Archive
   !insertmacro InstallerPublishStage 1
   System::Store /NOUNLOAD "S"

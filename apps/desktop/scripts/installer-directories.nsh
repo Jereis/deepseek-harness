@@ -44,6 +44,9 @@ Var dshNewMoved
     SetErrorLevel 2
     Quit
   ${EndIf}
+  !ifmacrodef customInstallerProtectDirectory
+    !insertmacro customInstallerProtectDirectory $dshNewDirectory
+  !endif
   File /oname=$PLUGINSDIR\dsh-7za.exe "${DSH_SEVENZIP_PATH}"
   StrCpy $INSTDIR $dshNewDirectory
   SetOutPath $INSTDIR
