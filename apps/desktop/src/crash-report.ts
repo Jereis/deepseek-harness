@@ -3,7 +3,7 @@
  * written before the recovery dialog so the dialog can name the file. The
  * dialog itself shows only the last lines of the error; the file holds the
  * whole error, its enumerable properties and cause chain, the process facts,
- * and the renderer's recent error-level console output.
+ * abnormal child process exits, and the renderer's recent error-level console output.
  */
 
 import { mkdir, readdir, unlink, writeFile } from 'node:fs/promises'
@@ -38,6 +38,10 @@ export interface CrashReportInput {
   readonly hostStderr?: string
   /** Recent renderer console lines at error level, oldest first. */
   readonly rendererConsole: readonly string[]
+  /** Recent abnormal child process exits (GPU, utility, renderer), oldest first; a GPU process failure surfaces as a renderer crash. */
+  readonly childProcessExits?: readonly string[]
+  /** Directory of the local crash dumps written by Electron's crash reporter. */
+  readonly crashDumps?: string
   readonly app: CrashReportApp
   readonly time: Date
 }
@@ -54,15 +58,18 @@ export const CRASH_REPORTS_RETAINED = 10
 /** Retained bytes of renderer error-level console output. */
 export const RENDERER_CONSOLE_MAX_BYTES = 64 * 1024
 
+/** Retained bytes of abnormal child process exit lines. */
+export const CHILD_PROCESS_EXITS_MAX_BYTES = 16 * 1024
+
 /** Upper bound of the rendered error section; a Host exit error already carries a 64 KiB stderr tail in its message. */
 export const ERROR_SECTION_MAX_CHARS = 256 * 1024
 
 /**
- * Bounded tail of renderer error-level console lines. Lines are dropped from
- * the head once the retained byte total exceeds the cap; one oversized line is
- * kept whole so a long stack is never cut mid-line.
+ * Bounded tail of report lines, such as renderer error-level console output.
+ * Lines are dropped from the head once the retained byte total exceeds the
+ * cap; one oversized line is kept whole so a long stack is never cut mid-line.
  */
-export class RendererConsoleTail {
+export class LineTail {
   private readonly lines: string[] = []
   private bytes = 0
 
@@ -70,8 +77,8 @@ export class RendererConsoleTail {
   constructor(private readonly maxBytes = RENDERER_CONSOLE_MAX_BYTES) {}
 
   /**
-   * Append one console line.
-   * @param line - the formatted console message.
+   * Append one line.
+   * @param line - the formatted line.
    */
   push(line: string): void {
     this.lines.push(line)
@@ -88,6 +95,18 @@ export class RendererConsoleTail {
 }
 
 /**
+ * A process exit code as Electron reports it, with the Windows NTSTATUS or
+ * exception code in hexadecimal alongside, such as `-2147483645 (0x80000003)`.
+ * @param exitCode - the reported exit code.
+ * @param platform - the platform that produced it.
+ * @returns the decimal code, followed on Windows by its unsigned hexadecimal form when it is not a small exit status.
+ */
+export function describeExitCode(exitCode: number, platform: NodeJS.Platform = process.platform): string {
+  if (platform !== 'win32' || (exitCode >= 0 && exitCode <= 0xffff)) return String(exitCode)
+  return `${String(exitCode)} (0x${(exitCode >>> 0).toString(16).toUpperCase().padStart(8, '0')})`
+}
+
+/**
  * The report file name: sortable by time, then the source.
  * @param time - failure time.
  * @param source - where the failure surfaced.
@@ -99,7 +118,7 @@ export function crashReportFileName(time: Date, source: CrashReportSource): stri
 
 /**
  * Render one report as plain text: a header of facts, the inspected error,
- * the Host's own diagnostic when it reported one, the running Host's stderr tail
+ * the abnormal child process exits when any were recorded, the Host's own diagnostic when it reported one, the running Host's stderr tail
  * when the shell recorded one, and the renderer console tail.
  * @param input - the failure and its context.
  * @returns the complete file content.
@@ -115,6 +134,7 @@ export function renderCrashReport(input: CrashReportInput): string {
     `node: ${input.app.node}`,
     `locale: ${input.app.locale}`,
     `shell pid: ${String(process.pid)}`,
+    ...(input.crashDumps === undefined ? [] : [`crash dumps: ${input.crashDumps}`]),
   ]
   const consoleSection = input.rendererConsole.length === 0
     ? '(no error-level renderer console output was captured)'
@@ -125,6 +145,9 @@ export function renderCrashReport(input: CrashReportInput): string {
     '--- error ---',
     boundedErrorSection(input.error),
     '',
+    ...(input.childProcessExits === undefined || input.childProcessExits.length === 0
+      ? []
+      : ['--- child process exits (abnormal, oldest first) ---', input.childProcessExits.join('\n'), '']),
     ...(input.hostDiagnostic === undefined ? [] : ['--- host diagnostic (as reported by the Host process) ---', input.hostDiagnostic, '']),
     ...(input.hostStderr === undefined ? [] : ['--- host stderr (recent output of the running Host) ---', input.hostStderr, '']),
     '--- renderer console (error level, oldest first) ---',

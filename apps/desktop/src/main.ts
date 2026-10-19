@@ -10,6 +10,7 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  crashReporter,
   dialog,
   ipcMain,
   Menu,
@@ -39,7 +40,7 @@ import { DesktopUpdateCoordinator } from './update-coordinator.ts'
 import { DesktopCommandManager } from './command-management.ts'
 import { serveWebDocument, authenticateWebHost, forwardWebRequest } from './web-document.ts'
 import { DesktopFatalRecovery } from './fatal-recovery.ts'
-import { pruneCrashReports, RendererConsoleTail, writeCrashReport, type CrashReportSource } from './crash-report.ts'
+import { describeExitCode, LineTail, CHILD_PROCESS_EXITS_MAX_BYTES, pruneCrashReports, writeCrashReport, type CrashReportSource } from './crash-report.ts'
 import { openWelcomeWindow } from './welcome-window.ts'
 import { WELCOME_IPC, needsWelcome, type WelcomeNotice } from './welcome-api.ts'
 import { connectDesktopWelcome, type DesktopWelcomeBackend } from './welcome-backend.ts'
@@ -81,7 +82,9 @@ let windowsLanguage: string | undefined
  */
 let backendReady = false
 /** Error-level console output of the primary window, attached to crash reports. */
-const rendererConsole = new RendererConsoleTail()
+const rendererConsole = new LineTail()
+/** Abnormal child process exits, attached to crash reports; a GPU process failure reaches the window as a renderer crash. */
+const childProcessExits = new LineTail(CHILD_PROCESS_EXITS_MAX_BYTES)
 
 // A distribution's own userData (brand.ts), unless a launcher passed --user-data-dir; set first because
 // the logs directory, the single-instance lock and the Web session storage all derive from it.
@@ -92,6 +95,14 @@ if (DESKTOP_BRAND.userDataDir !== undefined && !app.commandLine.hasSwitch('user-
 // Platform-conventional logs directory (macOS ~/Library/Logs/<name>, otherwise under userData);
 // set before ready so the first fatal report already resolves under it.
 app.setAppLogsPath()
+
+// Native crashes leave minidumps under app.getPath('crashDumps') for support; nothing is uploaded.
+crashReporter.start({ uploadToServer: false })
+app.on('child-process-gone', (_event, details) => {
+  if (details.reason === 'clean-exit') return
+  const name = details.name === undefined ? '' : ` (${details.name})`
+  childProcessExits.push(`${new Date().toISOString()} ${details.type}${name}: ${details.reason}, exit code ${describeExitCode(details.exitCode)}`)
+})
 
 // A distribution's own Harness home (brand.ts), unless the environment names one.
 if (DESKTOP_BRAND.homeDirName !== DEFAULT_DESKTOP_BRAND.homeDirName && !process.env.DSH_HOME?.trim()) {
@@ -134,6 +145,8 @@ function persistCrashReport(error: unknown, source: CrashReportSource): Promise<
     // Carrier and plugin skips print only to Host stderr, which a Host exit error already carries.
     ...(source === 'host' || runningHostStderr().trim() === '' ? {} : { hostStderr: runningHostStderr().trim() }),
     rendererConsole: rendererConsole.snapshot(),
+    childProcessExits: childProcessExits.snapshot(),
+    crashDumps: app.getPath('crashDumps'),
     app: {
       name: app.name, version: app.getVersion(), platform: process.platform, arch: process.arch,
       electron: process.versions.electron, node: process.versions.node, locale: currentDesktopLocale().id,
@@ -1147,7 +1160,7 @@ async function main(): Promise<void> {
     window.webContents.on('render-process-gone', (_event, details) => {
       navigation = undefined
       if (!quitting && !window.isDestroyed() && details.reason !== 'clean-exit') {
-        reportFatal(new Error(`Desktop renderer exited: ${details.reason}`), 'renderer')
+        reportFatal(new Error(`Desktop renderer exited: ${details.reason}, exit code ${describeExitCode(details.exitCode)}`), 'renderer')
       }
     })
     return window

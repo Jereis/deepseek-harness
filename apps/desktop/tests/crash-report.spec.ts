@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import {
-  CRASH_REPORTS_RETAINED, crashReportFileName, ERROR_SECTION_MAX_CHARS, pruneCrashReports, renderCrashReport, RendererConsoleTail,
+  CRASH_REPORTS_RETAINED, crashReportFileName, describeExitCode, ERROR_SECTION_MAX_CHARS, pruneCrashReports, renderCrashReport, LineTail,
   writeCrashReport,
   type CrashReportInput,
 } from '../src/crash-report.ts'
@@ -113,12 +113,31 @@ it('treats a missing logs directory as nothing to prune', async () => {
   expect(error).not.toHaveBeenCalled()
 })
 
-it('keeps the newest renderer console lines within the byte cap, never cutting a line', () => {
-  const tail = new RendererConsoleTail(20)
+it('keeps the newest lines within the byte cap, never cutting a line', () => {
+  const tail = new LineTail(20)
   tail.push('a'.repeat(8))
   tail.push('b'.repeat(8))
   tail.push('c'.repeat(8))
   expect(tail.snapshot()).toEqual(['b'.repeat(8), 'c'.repeat(8)])
   tail.push('d'.repeat(40))
   expect(tail.snapshot()).toEqual(['d'.repeat(40)])
+})
+
+it('shows Windows exit codes with their hexadecimal NTSTATUS or exception code', () => {
+  expect(describeExitCode(-2147483645, 'win32')).toBe('-2147483645 (0x80000003)')
+  expect(describeExitCode(-1073741819, 'win32')).toBe('-1073741819 (0xC0000005)')
+  expect(describeExitCode(3221225477, 'win32')).toBe('3221225477 (0xC0000005)')
+  expect(describeExitCode(1, 'win32')).toBe('1')
+  expect(describeExitCode(-11, 'linux')).toBe('-11')
+})
+
+it('prints abnormal child process exits and the crash dump directory when recorded', () => {
+  const exits = ['2026-10-19T02:17:26.184Z GPU: crashed, exit code -2147483645 (0x80000003)']
+  const text = renderCrashReport(input({ childProcessExits: exits, crashDumps: 'C:\\Users\\u\\AppData\\Roaming\\App\\Crashpad' }))
+  expect(text).toContain('shell pid: ')
+  expect(text).toContain('\ncrash dumps: C:\\Users\\u\\AppData\\Roaming\\App\\Crashpad\n')
+  expect(text).toContain(`--- child process exits (abnormal, oldest first) ---\n${exits[0]}\n\n--- renderer console`)
+  const plain = renderCrashReport(input({ childProcessExits: [] }))
+  expect(plain).not.toContain('--- child process exits')
+  expect(plain).not.toContain('crash dumps:')
 })

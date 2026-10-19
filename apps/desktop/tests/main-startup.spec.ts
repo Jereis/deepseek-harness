@@ -279,6 +279,7 @@ vi.mock('../src/policy-test-auth.ts', () => ({ DesktopPolicyTestAuth: class {
 } }))
 
 vi.mock('electron', () => ({
+  crashReporter: { start: vi.fn() },
   app: harness.app,
   BrowserWindow: harness.FakeWindow,
   dialog: harness.dialog,
@@ -1963,6 +1964,20 @@ describe('desktop main startup', () => {
     expect(harness.dialog.showMessageBox).toHaveBeenCalledOnce()
     expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).not.toContain('secondary failure')
     expect(window.urls).toEqual(['dsh-app://app/'])
+  })
+
+  it('reports the renderer exit code and earlier abnormal child process exits with the crash dump directory', async () => {
+    await import('../src/main.ts')
+    await harness.preparing.promise
+    harness.app.emit('child-process-gone', {}, { type: 'Utility', reason: 'clean-exit', exitCode: 0, name: 'Network Service' })
+    harness.app.emit('child-process-gone', {}, { type: 'GPU', reason: 'crashed', exitCode: 3 })
+    harness.windows[0]!.webContents.emit('render-process-gone', {}, { reason: 'crashed', exitCode: 7 })
+    await harness.dialogShown.promise
+    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).toContain('Desktop renderer exited: crashed, exit code 7')
+    const [, report] = vi.mocked(writeCrashReport).mock.calls[0]!
+    expect(report.crashDumps).toBe('desktop-test-crashDumps')
+    expect(report.childProcessExits).toHaveLength(1)
+    expect(report.childProcessExits![0]).toMatch(/^\S+ GPU: crashed, exit code 3$/u)
   })
 
   it('ignores clean renderer exits and exits of a destroyed window', async () => {

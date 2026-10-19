@@ -47,6 +47,7 @@ vi.mock('../src/crash-report.ts', async importOriginal => ({
   pruneCrashReports: vi.fn(async () => {}),
 }))
 vi.mock('electron', () => ({
+  crashReporter: { start: vi.fn() },
   clipboard: { writeText: state.copy },
   app: {
     isPackaged: false,
