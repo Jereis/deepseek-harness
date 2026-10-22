@@ -1008,7 +1008,7 @@ async function main(): Promise<void> {
     { type: 'separator' },
     // A process without an update source (a development run, a build published
     // nowhere) has nothing to check, so it does not offer a check that can only fail.
-    ...updates.supported === false
+    ...!updates.supported
       ? [] : [{ label: currentDesktopLocale().messages.checkUpdatesMenu, click: () => { void openUpdatePrompt(true) } }],
     ...(process.platform === 'darwin' || process.platform === 'win32') && (DESKTOP_BRAND.cliCommandMenu !== false || development)
       ? [{ label: currentDesktopLocale().messages.cliCommandMenu, click: () => { void commandManager.show() } }] : [],

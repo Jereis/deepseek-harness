@@ -200,8 +200,9 @@ describe('llm-pi-ai contributed routes', () => {
 
   it('refuses an invalid profile', async () => {
     await loadComposition()
-    expect(() => contributor.routes!.contribute({ gateway: { api: 'openai-completions', baseURL: '' } }))
-      .toThrow(expect.objectContaining({ failure: expect.objectContaining({ code: 'INVALID_ROUTE' }) }))
+    let thrown: unknown
+    try { contributor.routes!.contribute({ gateway: { api: 'openai-completions', baseURL: '' } }) } catch (error) { thrown = error }
+    expect(thrown).toMatchObject({ failure: { code: 'INVALID_ROUTE' } })
   })
 
   it('withdraws on the returned function, idempotently', async () => {

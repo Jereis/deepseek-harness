@@ -47,7 +47,7 @@ const headerEntry = (seq: number, provider: string): SessionLiveEventEntry => ({
     type: 'request/header', seq: seq as SessionSeq, time: seq,
     data: { header: { config: { provider, model: 'm' } }, reason: 'change' },
   },
-} as SessionLiveEventEntry)
+})
 
 /**
  * Mount the real Conversation and Chat plugins over a runtime whose root frame
