@@ -86,8 +86,8 @@ export const inject = [
  */
 function latestRequestProvider(entries: readonly SessionEventLikeEntry[]): string | undefined {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index]!
-    if (entry.type === 'event' && entry.event.type === 'request/header') return entry.event.data.header.config.provider
+    const entry = entries[index]
+    if (entry?.type === 'event' && entry.event.type === 'request/header') return entry.event.data.header.config.provider
   }
   return undefined
 }

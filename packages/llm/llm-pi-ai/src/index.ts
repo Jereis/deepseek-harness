@@ -325,7 +325,10 @@ export function apply(ctx: Context, config: Config): void {
     // A contributed route's model list rides along: unlike a configured one,
     // its change arrives with no settings write, so re-registering is what
     // publishes `llm/adapters-updated` for model selectors to refresh.
-    const facts = { routes: registrationFacts(profiles()), contributed: contributedFacts([...contributions.values()].map(entry => entry.raw)) }
+    const facts = {
+      routes: registrationFacts(profiles()),
+      contributed: contributedFacts([...contributions.values()].map(entry => entry.raw)),
+    }
     if (deepEqualJson(facts, registeredFacts)) return
     // The registry captures the route set and each route's retry policy at
     // registration, so a change to either must re-register. The swap is
@@ -357,7 +360,7 @@ export function apply(ctx: Context, config: Config): void {
       add(providers) {
         let resolved: Map<string, ResolvedPiAiProviderProfile>
         try {
-          resolved = resolveProfiles(structuredClone(providers) as import('./config.ts').Options['providers'], 'strict')
+          resolved = resolveProfiles(structuredClone(providers), 'strict')
         } catch (error) {
           throw new LlmError(`llm-pi-ai: invalid contributed route: ${(error as Error).message}`, 'INVALID_ROUTE', { cause: error })
         }

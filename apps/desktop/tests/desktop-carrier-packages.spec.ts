@@ -61,7 +61,7 @@ describe('desktop carrier packages', () => {
       { name: '@example/ui', version: '0.1.0', file: 'example-ui-0.1.0.tgz' },
     ])
     expect(readdirSync(join(directory, 'carrier-packages')).sort()).toEqual(['example-auth-0.1.0.tgz', 'example-ui-0.1.0.tgz'])
-    expect(JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')).dependencies).toEqual({
+    expect((JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as { dependencies: unknown }).dependencies).toEqual({
       '@deepseek-ai/dsh': 'file:./packages/dsh.tgz',
       '@example/auth': 'file:./carrier-packages/example-auth-0.1.0.tgz',
       '@example/ui': 'file:./carrier-packages/example-ui-0.1.0.tgz',
@@ -96,11 +96,11 @@ describe('desktop carrier packages', () => {
   it('requires each carrier at the runtime top level with its packed version', () => {
     const runtime = temporary()
     const carrier = { name: '@example/auth', version: '0.1.0', file: 'example-auth-0.1.0.tgz' }
-    expect(() => verifyDesktopCarrierPackages(runtime, [carrier])).toThrow(/not installed/u)
+    expect(() => { verifyDesktopCarrierPackages(runtime, [carrier]) }).toThrow(/not installed/u)
     mkdirSync(join(runtime, 'node_modules', '@example', 'auth'), { recursive: true })
     writeFileSync(join(runtime, 'node_modules', '@example', 'auth', 'package.json'), '{"version":"0.0.9"}')
-    expect(() => verifyDesktopCarrierPackages(runtime, [carrier])).toThrow(/expected 0\.1\.0/u)
+    expect(() => { verifyDesktopCarrierPackages(runtime, [carrier]) }).toThrow(/expected 0\.1\.0/u)
     writeFileSync(join(runtime, 'node_modules', '@example', 'auth', 'package.json'), '{"version":"0.1.0"}')
-    expect(() => verifyDesktopCarrierPackages(runtime, [carrier])).not.toThrow()
+    expect(() => { verifyDesktopCarrierPackages(runtime, [carrier]) }).not.toThrow()
   })
 })

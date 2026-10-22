@@ -49,7 +49,7 @@ export interface Config {
 }
 
 /** Directory policy after schema defaults have been applied. */
-type ResolvedConfig = Config & { documentsLookupTimeoutMs: number, documentsSubdirectory: string }
+type ResolvedConfig = Config & { documentsLookupTimeoutMs: number; documentsSubdirectory: string }
 
 declare module '@deepseek-ai/cordis' {
   interface Context {

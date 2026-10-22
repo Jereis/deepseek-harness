@@ -175,9 +175,9 @@ describe('llm-pi-ai contributed routes', () => {
     contributor.routes!.contribute({ gateway: gatewayRoute(server.url, [{ id: 'chat', name: 'Chat' }]) })
 
     expect(() => contributor.routes!.contribute({ acme: gatewayRoute(server.url, [{ id: 'x', name: 'X' }]) }))
-      .toThrow(expect.objectContaining({ failure: expect.objectContaining({ code: 'DUPLICATE_ROUTE' }) }))
+      .toThrow(expect.objectContaining({ failure: expect.objectContaining({ code: 'DUPLICATE_ROUTE' }) as unknown }))
     expect(() => contributor.routes!.contribute({ gateway: gatewayRoute(server.url, [{ id: 'x', name: 'X' }]) }))
-      .toThrow(expect.objectContaining({ failure: expect.objectContaining({ code: 'DUPLICATE_ROUTE' }) }))
+      .toThrow(expect.objectContaining({ failure: expect.objectContaining({ code: 'DUPLICATE_ROUTE' }) as unknown }))
     expect(providerIds(ctx).sort()).toEqual(['acme', 'gateway'])
     expect((await ctx.llm.listModels('gateway')).map(model => model.id)).toEqual(['chat'])
   })
