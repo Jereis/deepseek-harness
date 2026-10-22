@@ -2,7 +2,7 @@
  * Suggest the next build version for a product version, so the sequence number
  * is derived rather than remembered.
  *
- * `apps/desktop/README.md` gives the form as `<product version>.<date>.<index>`
+ * `apps/desktop/packaging/README.md#release-versions` gives the form as `<product version>.<date>.<index>`
  * for a prerelease base and `<product version>-test.<date>.<index>` for a
  * stable one. What makes an index correct is which ones are taken, and that is
  * recorded where the builds went: the update bucket for an uploaded build, the
@@ -34,11 +34,11 @@ const LISTING_PAGE_SIZE = 1000
 /**
  * Match the artifact names electron-builder writes for one build, on either platform.
  * @param artifactPrefix - The brand's artifact prefix, which leads every installer name.
- * @returns A pattern capturing the version; unsigned Windows builds without a feed add a suffix.
+ * @returns A pattern capturing the version; unsigned and unnotarized builds add a suffix.
  */
 function artifactPattern(artifactPrefix: string): RegExp {
   const prefix = artifactPrefix.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
-  return new RegExp(`(?:^|/)${prefix}-(?<version>.+)-(?:mac|win)-(?:arm64|x64)(?:-unsigned)?\\.(?:exe|dmg|zip)$`, 'u')
+  return new RegExp(`(?:^|/)${prefix}-(?<version>.+)-(?:mac|win)-(?:arm64|x64)(?:-unsigned|-unnotarized)?\\.(?:exe|dmg|zip)$`, 'u')
 }
 
 /** Inputs that decide which versions are already taken. */

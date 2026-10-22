@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
- * Composer editor pure core: ReferenceChipNode semantics, the three-view
- * projections, and detect-span application. Headless editors drive every
+ * Composer editor pure core: ReferenceChipNode and CommandChipNode
+ * semantics, the three-view projections, and detect-span application. Headless editors drive every
  * case — no React tree, no contenteditable; the chip's visual face has its
  * own component spec.
  */
@@ -10,14 +10,17 @@ import { createHeadlessEditor } from '@lexical/headless'
 import type { LexicalEditor, NodeKey, ParagraphNode } from 'lexical'
 import {
   $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $getSelection,
-  $isRangeSelection, $isTextNode, $setSelection,
+  $isTextNode, $setSelection,
 } from 'lexical'
 import type { ReferenceInsert } from '../src/client/contract/draft-editor.ts'
+import type { CommandClaim } from '../src/client/contract/input.ts'
 import {
   $createReferenceChipNode, $isReferenceChipNode, ReferenceChipNode,
 } from '../src/client/input/editor/chip-node.tsx'
-import { registerClaimDecoration } from '../src/client/input/editor/claim-decor.ts'
-import { registerTextRefDecoration, TextRefNode } from '../src/client/input/editor/text-ref.ts'
+import {
+  $createCommandChipNode, $isCommandChipNode, CommandChipNode, registerCommandChipSeat,
+} from '../src/client/input/editor/command-chip-node.tsx'
+import { TextRefNode } from '../src/client/input/editor/text-ref.ts'
 import type { SerializedReferenceChipNode } from '../src/client/input/editor/chip-node.tsx'
 import {
   $composerLayout, $detectOffsetOfPoint, $projectComposer, ATOMIC_CHAR,
@@ -44,7 +47,7 @@ const SKILL_REF: ReferenceInsert = {
 function makeEditor(): LexicalEditor {
   return createHeadlessEditor({
     namespace: 'core-spec',
-    nodes: [ReferenceChipNode, TextRefNode],
+    nodes: [ReferenceChipNode, CommandChipNode, TextRefNode],
     onError: (error) => { throw error },
   })
 }
@@ -425,135 +428,109 @@ describe('detect-span application', () => {
   })
 })
 
-describe('claim precedence over text-ref entities', () => {
-  const TOKEN_STYLE = 'color: var(--dsw-alias-state-business-primary)'
-  const LEXICON: ReadonlyMap<'/' | '@', readonly string[]> = new Map([['/', ['plan']]])
+const GOAL_CLAIM: CommandClaim = {
+  name: 'goal',
+  token: '/goal ',
+  submit: () => Promise.resolve({ kind: 'success' }),
+}
 
-  it.each(['/plan', '/plan '])('keeps the lexicon-listed %j claim plain and accent-styled until release', (token) => {
+/** Seed one paragraph opening with the command chip, followed by `rest`. */
+function seedCommand(editor: LexicalEditor, rest = ' ship'): void {
+  editor.update(() => {
+    const paragraph = $createParagraphNode()
+    paragraph.append($createCommandChipNode(GOAL_CLAIM))
+    if (rest !== '') paragraph.append($createTextNode(rest))
+    $getRoot().clear().append(paragraph)
+  }, { discrete: true })
+}
+
+/** The first paragraph of the document. */
+function $firstParagraph(): ParagraphNode {
+  return $getRoot().getFirstChild() as ParagraphNode
+}
+
+describe('CommandChipNode', () => {
+  it('projects as one atomic character, the token without its separator, and the leading claim', () => {
     const editor = makeEditor()
-    let claim: string | null = token
-    registerClaimDecoration(editor, () => claim)
-    registerTextRefDecoration(editor, () => LEXICON, () => claim)
-    editor.update(() => {
-      const paragraph = $createParagraphNode()
-      paragraph.append($createTextNode('/plan rest'))
-      $getRoot().clear().append(paragraph)
-    }, { discrete: true })
-    const leaf = (): { type: string; style: string; text: string } | null =>
-      editor.getEditorState().read(() => {
-        const first = ($getRoot().getFirstChild() as ParagraphNode).getFirstChild()
-        return first === null ? null : {
-          type: first.getType(),
-          style: $isTextNode(first) ? first.getStyle() : '',
-          text: first.getTextContent(),
-        }
-      })
-    // Claimed: the entity transform yields the seat, the claim transform styles it.
-    expect(leaf()).toEqual({ type: 'text', style: TOKEN_STYLE, text: token })
-    // Released (the shell's refresh nudges the seat dirty): the entity captures it.
-    claim = null
-    editor.update(() => {
-      const first = ($getRoot().getFirstChild() as ParagraphNode).getFirstChild()
-      if ($isTextNode(first)) first.markDirty()
-    }, { discrete: true })
-    expect(leaf()).toEqual({ type: 'composer-text-ref', style: '', text: '/plan' })
-    // Re-claimed: the entity reverts to plain text and the warn style returns.
-    claim = token
-    editor.update(() => {
-      const first = ($getRoot().getFirstChild() as ParagraphNode).getFirstChild()
-      if ($isTextNode(first)) first.markDirty()
-    }, { discrete: true })
-    expect(leaf()).toEqual({ type: 'text', style: TOKEN_STYLE, text: token })
+    seedCommand(editor)
+    editor.read(() => {
+      const projection = $projectComposer(idAssigner())
+      expect(projection.detectText).toBe(`${ATOMIC_CHAR} ship`)
+      expect(projection.clipboardText).toBe('/goal ship')
+      expect(projection.occurrences).toEqual([])
+      expect(projection.command).toBe(GOAL_CLAIM)
+    })
   })
-})
 
-describe('claim-token split', () => {
-  const TOKEN_STYLE = 'color: var(--dsw-alias-state-business-primary)'
-
-  /** A claimed editor whose draft is the token alone, caret after it. */
-  function claimed(token: string): { editor: LexicalEditor; release: () => void } {
+  it('keeps its claim across writable clones', () => {
     const editor = makeEditor()
-    let claim: string | null = token
-    registerClaimDecoration(editor, () => claim)
+    seedCommand(editor)
     editor.update(() => {
-      const paragraph = $createParagraphNode()
-      paragraph.append($createTextNode(token))
-      $getRoot().clear().append(paragraph)
-      paragraph.selectEnd()
+      const chip = $firstParagraph().getFirstChild()
+      if (!$isCommandChipNode(chip)) throw new Error('missing chip')
+      chip.markDirty()
     }, { discrete: true })
-    const release = (): void => {
-      claim = null
-      editor.update(() => {
-        const first = ($getRoot().getFirstChild() as ParagraphNode).getFirstChild()
-        if ($isTextNode(first)) first.markDirty()
-      }, { discrete: true })
-    }
-    return { editor, release }
-  }
-
-  function leaves(editor: LexicalEditor): Array<[string, string]> {
-    return editor.getEditorState().read(() =>
-      ($getRoot().getFirstChild() as ParagraphNode).getChildren()
-        .map(node => [node.getTextContent(), $isTextNode(node) ? node.getStyle() : ''] as [string, string]))
-  }
-
-  /**
-   * Type the way the DOM path does once the caret sits on the token node: a
-   * selection rebuilt from the DOM adopts its anchor node's style, so the
-   * text grows the token node instead of starting a new one.
-   */
-  function typeIntoSeat(editor: LexicalEditor, text: string): void {
-    editor.update(() => {
-      const selection = $getSelection()
-      if (!$isRangeSelection(selection)) throw new Error('no range selection')
-      const anchor = selection.anchor.getNode()
-      if ($isTextNode(anchor)) selection.setStyle(anchor.getStyle())
-      selection.insertText(text)
-    }, { discrete: true })
-  }
-
-  it.each(['/plan ', '🖼 生图 '])('splits text typed into the styled %j seat out unstyled, without looping', (token) => {
-    const { editor, release } = claimed(token)
-    expect(leaves(editor)).toEqual([[token, TOKEN_STYLE]])
-    typeIntoSeat(editor, 'abc')
-    expect(leaves(editor)).toEqual([[token, TOKEN_STYLE], ['abc', '']])
-    typeIntoSeat(editor, 'd')
-    expect(leaves(editor)).toEqual([[token, TOKEN_STYLE], ['abcd', '']])
-    // A rejected update would leave a half-applied pending state behind.
-    expect(editor._pendingEditorState).toBeNull()
-    release()
-    expect(leaves(editor)).toEqual([[`${token}abcd`, '']])
+    editor.read(() => {
+      const chip = $firstParagraph().getFirstChild()
+      expect($isCommandChipNode(chip) && chip.getClaim()).toBe(GOAL_CLAIM)
+    })
   })
 
-  it.each(['/plan ', '🖼 生图 '])('splits a seat whose text grew in place (%j, IME commit / DOM mutation)', (token) => {
-    const { editor } = claimed(token)
-    editor.update(() => {
-      const first = ($getRoot().getFirstChild() as ParagraphNode).getFirstChild()
-      if ($isTextNode(first)) first.setTextContent(`${token}abc`)
-    }, { discrete: true })
-    expect(leaves(editor)).toEqual([[token, TOKEN_STYLE], ['abc', '']])
+  it('serializes the token text and imports it back as plain text', () => {
+    const editor = makeEditor()
+    seedCommand(editor, '')
+    const json = editor.getEditorState().toJSON()
+    expect(json.root.children[0]).toMatchObject({ children: [{ type: 'command-chip', text: '/goal' }] })
+    editor.parseEditorState(json).read(() => {
+      const first = $firstParagraph().getFirstChild()
+      expect($isTextNode(first) && first.getTextContent()).toBe('/goal')
+    })
   })
 
-  it.each(['\u2060', '\u2063', '\u200B'])('leaves the invisible %j token unstyled and unsplit', (token) => {
-    const { editor, release } = claimed(token)
-    expect(leaves(editor)).toEqual([[token, '']])
-    typeIntoSeat(editor, 'abc')
-    expect(leaves(editor)).toEqual([[`${token}abc`, '']])
+  it('becomes its literal token when text lands before it', () => {
+    const editor = makeEditor()
+    registerCommandChipSeat(editor)
+    seedCommand(editor)
     editor.update(() => {
-      const first = ($getRoot().getFirstChild() as ParagraphNode).getFirstChild()
-      if ($isTextNode(first)) first.setTextContent(`${token}abcd`)
+      $firstParagraph().getFirstChild()?.insertBefore($createTextNode('x'))
     }, { discrete: true })
-    expect(leaves(editor)).toEqual([[`${token}abcd`, '']])
-    release()
-    expect(leaves(editor)).toEqual([[`${token}abcd`, '']])
+    editor.read(() => {
+      const projection = $projectComposer(idAssigner())
+      expect(projection.detectText).toBe('x/goal ship')
+      expect(projection.command).toBeUndefined()
+    })
   })
 
-  it('clears a stale accent left on an invisible seat', () => {
-    const { editor } = claimed('\u2060')
+  it('becomes its literal token behind a line break or on a later paragraph', () => {
+    const editor = makeEditor()
+    registerCommandChipSeat(editor)
+    seedCommand(editor)
     editor.update(() => {
-      const first = ($getRoot().getFirstChild() as ParagraphNode).getFirstChild()
-      if ($isTextNode(first)) first.setStyle(TOKEN_STYLE).setTextContent('\u2060abc')
+      $firstParagraph().getFirstChild()?.insertBefore($createLineBreakNode())
     }, { discrete: true })
-    expect(leaves(editor)).toEqual([['\u2060abc', '']])
+    editor.read(() => {
+      expect($projectComposer(idAssigner()).detectText).toBe('\n/goal ship')
+    })
+    seedCommand(editor)
+    editor.update(() => {
+      $firstParagraph().insertBefore($createParagraphNode())
+    }, { discrete: true })
+    editor.read(() => {
+      const projection = $projectComposer(idAssigner())
+      expect(projection.detectText).toBe('\n/goal ship')
+      expect(projection.command).toBeUndefined()
+    })
+  })
+
+  it('stays a chip on the leading seat', () => {
+    const editor = makeEditor()
+    registerCommandChipSeat(editor)
+    seedCommand(editor)
+    editor.update(() => {
+      $firstParagraph().getLastChild()?.remove()
+    }, { discrete: true })
+    editor.read(() => {
+      expect($projectComposer(idAssigner()).command).toBe(GOAL_CLAIM)
+    })
   })
 })

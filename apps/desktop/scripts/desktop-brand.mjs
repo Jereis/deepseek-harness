@@ -35,7 +35,6 @@ const PATTERNS = {
  * (`page`: application-origin path the welcome window loads; `gate`: Host `/api` RPC
  * method answering whether the welcome entry is required; see `src/welcome-delegate.ts`),
  * `cliCommandMenu` (`false` keeps the command-line manager out of installed builds' menu),
- * `desktopPort` (the Host's listen port: an integer, 0 or 1024–65535, 0 letting the OS pick),
  * and `userDataDir` (Electron userData relative to the application-data directory, 1–4 `/`-separated segments).
  * DSH_DESKTOP_DISPLAY_VERSION, a semantic version, becomes the brand's displayed `version`.
  * @param {NodeJS.ProcessEnv} env - build environment.
@@ -73,9 +72,6 @@ export function readDesktopBrand(env = process.env) {
     welcome = Object.freeze({ page, gate })
   }
   if (value.cliCommandMenu !== undefined && typeof value.cliCommandMenu !== 'boolean') throw fail('cliCommandMenu must be a boolean')
-  if (value.desktopPort !== undefined && !(Number.isInteger(value.desktopPort) && (value.desktopPort === 0 || (value.desktopPort >= 1024 && value.desktopPort <= 65535)))) {
-    throw fail('desktopPort must be 0 or an integer from 1024 to 65535')
-  }
   if (value.userDataDir !== undefined && (typeof value.userDataDir !== 'string' || !USER_DATA_DIR.test(value.userDataDir)
     || value.userDataDir.split('/').some(segment => segment.endsWith('.') || segment.endsWith(' ')))) {
     throw fail(`userDataDir must match ${USER_DATA_DIR} with no segment ending in a dot or space`)
@@ -90,7 +86,6 @@ export function readDesktopBrand(env = process.env) {
     artifactPrefix: value.artifactPrefix,
     ...(version ? { version } : {}),
     ...(value.cliCommandMenu === undefined ? {} : { cliCommandMenu: value.cliCommandMenu }),
-    ...(value.desktopPort === undefined ? {} : { desktopPort: value.desktopPort }),
     ...(value.userDataDir === undefined ? {} : { userDataDir: value.userDataDir }),
   })
   return {

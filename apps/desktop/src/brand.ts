@@ -23,11 +23,6 @@ export interface DesktopBrand {
    */
   readonly cliCommandMenu?: boolean
   /**
-   * Port the Desktop Host listens on (`DSH_DESKTOP_PORT`), so a distribution can run
-   * beside upstream's Desktop; 0 lets the OS pick. Absent keeps upstream's 19387.
-   */
-  readonly desktopPort?: number
-  /**
    * Electron userData directory relative to the OS application-data directory, `/`-separated,
    * so a distribution's single-instance lock, Web session storage and logs stay apart from
    * upstream's. Absent keeps Electron's default, derived from the package name.
