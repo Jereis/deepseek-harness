@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -51,6 +51,28 @@ describe('desktop development project', () => {
     const descriptor = JSON.parse(readFileSync(join(project, 'desktop-runtime.json'), 'utf8')) as { platform: string; arch: string; sharedPackages: unknown[] }
     expect(descriptor).toMatchObject({ platform: 'darwin', arch: 'arm64' })
     expect(descriptor.sharedPackages).toContainEqual({ name: 'unhoisted', version: '1.2.3', path: 'node_modules/unhoisted' })
+  })
+
+  it('skips hoisted links whose package was deleted', () => {
+    const root = temporaryRoot()
+    const cli = join(root, 'cli')
+    const host = join(root, 'host')
+    const hoisted = join(root, 'hoisted')
+    const removed = join(root, 'removed')
+    mkdirSync(join(cli, 'node_modules'), { recursive: true })
+    mkdirSync(join(host, 'lib'), { recursive: true })
+    mkdirSync(join(hoisted, '@deepseek-ai'), { recursive: true })
+    mkdirSync(join(removed, 'scoped'), { recursive: true })
+    writeFileSync(join(cli, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '1.2.3' }))
+    writeFileSync(join(host, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-desktop-host', version: '1.2.3' }))
+    writeFileSync(join(host, 'lib/index.js'), '')
+    const type = process.platform === 'win32' ? 'junction' : 'dir'
+    symlinkSync(join(removed, 'scoped'), join(hoisted, '@deepseek-ai/dsh-removed'), type)
+    symlinkSync(removed, join(hoisted, 'removed'), type)
+    rmSync(removed, { recursive: true })
+    const project = prepareDevelopmentProject({ projectDir: join(root, 'runtime'), cliDir: cli, hostDir: host, dependencyDir: hoisted, release: release(), target: 'mac-arm64' })
+    expect(existsSync(join(project, 'node_modules/@deepseek-ai/dsh-removed'))).toBe(false)
+    expect(existsSync(join(project, 'node_modules/removed'))).toBe(false)
   })
 
   it('copies carrier bundles as a tarball would hold them and records them for the Host', () => {

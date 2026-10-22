@@ -104,15 +104,21 @@ function linkDirectory(source: string, destination: string): void {
   symlinkSync(realpathSync(source), destination, process.platform === 'win32' ? 'junction' : 'dir')
 }
 
+/**
+ * Mirror the hoisted dependency links, skipping links whose target no longer exists:
+ * pnpm keeps links to workspace packages deleted since the last install.
+ */
 function mirrorDependencyLinks(sourceRoot: string, destinationRoot: string): string[] {
   const names: string[] = []
   for (const entry of readdirSync(sourceRoot, { withFileTypes: true })) {
     if (entry.name === '.bin') continue
     const source = join(sourceRoot, entry.name)
+    if (!existsSync(source)) continue
     if (entry.name.startsWith('@') && (entry.isDirectory() || entry.isSymbolicLink())) {
       mkdirSync(join(destinationRoot, entry.name), { recursive: true })
       for (const scoped of readdirSync(source, { withFileTypes: true })) {
         if (!scoped.isDirectory() && !scoped.isSymbolicLink()) continue
+        if (!existsSync(join(source, scoped.name))) continue
         linkDirectory(join(source, scoped.name), join(destinationRoot, entry.name, scoped.name))
         names.push(`${entry.name}/${scoped.name}`)
       }
