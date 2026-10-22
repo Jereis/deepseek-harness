@@ -18,7 +18,7 @@ import { apply as applyChat, inject as injectChat } from '@deepseek-ai/dsh-clien
 import type { QuotaNoticeInjected } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { CHAT_SETTINGS_NAMESPACE, type ChatSettings } from '../src/chat-settings.ts'
 import { QuotaNoticeHost } from '../src/client/chat/QuotaNoticeHost.tsx'
-import type { QuotaNoticeHostProps, QuotaNoticeOwnerProps, QuotaNoticeState } from '../src/client/contract/slots.ts'
+import type { QuotaNoticeHostProps, QuotaNoticeState } from '../src/client/contract/slots.ts'
 
 usePinnedBrowserLanguages('en')
 
@@ -263,15 +263,15 @@ describe('quota notice chain owner', () => {
     [{ code: 'QUOTA', seq: 1, provider: 'langtu' }, { code: 'QUOTA', provider: 'langtu' }],
     [{ code: 'ACCOUNT_QUOTA', seq: 2 }, { code: 'ACCOUNT_QUOTA' }],
   ] as const)('passes the provider through when the notice has one (%o)', (state, expected) => {
-    const owners: QuotaNoticeOwnerProps[] = []
-    const props = {
+    const owners: object[] = []
+    const props: Pick<QuotaNoticeHostProps, 'useNotice' | 'dismissNotice' | 'keepNoticeOpen' | 'renderSlotChain' | 't'> = {
       useNotice: <T,>(select: (notice: QuotaNoticeState | null) => T) => select(state),
       dismissNotice: () => {},
       keepNoticeOpen: () => () => {},
-      renderSlotChain: (_name: string, owner: QuotaNoticeOwnerProps) => { owners.push(owner); return null },
+      renderSlotChain: (_name, owner) => { owners.push(owner); return null },
       t: () => 'quota',
-    } as unknown as QuotaNoticeHostProps
-    render(<QuotaNoticeHost {...props} />)
+    }
+    render(<QuotaNoticeHost {...props as QuotaNoticeHostProps} />)
     expect(owners).toHaveLength(1)
     expect(owners[0]).toMatchObject(expected)
     if (!('provider' in expected)) expect(owners[0]).not.toHaveProperty('provider')

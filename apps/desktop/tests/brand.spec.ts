@@ -35,13 +35,7 @@ function packageConfig(brand: unknown) {
     DSH_DESKTOP_TARGET_PLATFORM: 'win32',
     DSH_DESKTOP_TARGET_ARCH: 'x64',
     DSH_DESKTOP_UNSIGNED: '1',
-  }, 'win32', 'x64') as unknown as {
-    productName: string
-    protocols: { name: string; schemes: string[] }[]
-    artifactName: string
-    nsis: { shortcutName?: string }
-    extraMetadata: Record<string, unknown>
-  }
+  }, 'win32', 'x64')
 }
 
 describe('desktop brand', () => {

@@ -66,11 +66,11 @@ it('lets the page override the caption palette through a root marker', async () 
     return { backgroundColor: overlay ? 'transparent' : 'white', color: overlay ? 'white' : 'black' } as CSSStyleDeclaration
   })
   const pixels: Record<string, number[]> = { transparent: [0, 0, 0, 0], white: [255, 255, 255, 255], black: [0, 0, 0, 255] }
-  const context = {
+  const context: Pick<CanvasRenderingContext2D, 'fillStyle' | 'clearRect' | 'fillRect' | 'getImageData'> = {
     fillStyle: '', clearRect: vi.fn(), fillRect: vi.fn(),
-    getImageData: () => ({ data: new Uint8ClampedArray(pixels[context.fillStyle]!) }),
+    getImageData: () => ({ data: new Uint8ClampedArray(pixels[context.fillStyle as string]!) }) as ImageData,
   }
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context as unknown as CanvasRenderingContext2D)
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context as CanvasRenderingContext2D)
   syncWindowsAppearance()
   expect(probe?.style.cssText).toContain('var(--dsh-windows-caption-fill')
   expect(probe?.style.cssText).toContain('var(--dsh-windows-caption-symbol')
