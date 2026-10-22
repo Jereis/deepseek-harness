@@ -969,7 +969,7 @@ it('lists contributed priority providers first and re-orders when the priority c
   }))
   const directory = createSnapshotStore<ModelDirectoryState>(state({ current: null, groups }))
   const priority = createSnapshotStore<readonly string[]>(['gateway', 'deepseek-account', 'deepseek-official'])
-  render(<ModelSelect locked={false} available directory={directory} providerPriority={priority} load={vi.fn()} select={vi.fn()} t={t} />)
+  render(<ModelSelect renderSlot={renderLabel} locked={false} available directory={directory} providerPriority={priority} load={vi.fn()} select={vi.fn()} t={t} />)
   fireEvent.click(screen.getByRole('button', { name: '请选择模型' }))
   expect(screen.getAllByRole('menuitemradio').map(row => row.textContent))
     .toEqual(['gateway-1', 'deepseek-account-1', 'deepseek-official-1', 'custom-1'])

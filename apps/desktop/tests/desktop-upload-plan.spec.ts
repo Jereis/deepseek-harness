@@ -366,7 +366,6 @@ describe('desktop upload plan', () => {
       'example-desktop-2.0.0-win-x64.exe',
       'example-desktop-2.0.0-win-x64.exe.blockmap',
       'nightly.yml',
-      'latest.yml',
     ])
     expect(load(plan.artifacts[2]!.contents!)).toMatchObject({
       files: [{ url: 'https://downloads.example.com/dsh-desk/bin/win-x64/example-desktop-2.0.0-win-x64.exe' }],

@@ -13,6 +13,7 @@ import { getDshRuntimeVersion } from '@deepseek-ai/dsh-app-boot'
 const ERROR_STEPS: Record<ManagementError['code'], string> = {
   'management-required': 'This entry belongs to plugin management itself and cannot be changed.',
   'unaddressable': 'This entry has no unique profile patch target; tell the user to edit the profile patch file directly.',
+  'carrier': 'The application ships and always loads this bundle; it cannot be enabled, disabled, or removed.',
   'unknown-plugin': 'Call list_plugins and retry with an exact entryId.',
   'invalid-spec': 'Retry with an npm package name, a git URL, a tarball URL, or an absolute local directory.',
   'already-installed': 'The package is already installed; to install another version, call remove_bundle first, then install_bundle again.',
