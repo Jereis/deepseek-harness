@@ -509,7 +509,7 @@ interface ResolutionSource {
   home: string
   profileDir: string | undefined
   /** Carrier bundles the profile was loaded with; a successor loads the same ones, so they stay installation packages. */
-  carrierBundles: readonly string[]
+  carrierBundles?: readonly string[]
 }
 
 /**
@@ -549,7 +549,9 @@ export class ProfileRuntimeResolution implements RuntimeResolution {
     const { installAnchor, home, profileDir, carrierBundles } = this.#source
     return createRuntimeResolution({
       installAnchor, home,
-      ...profileDir === undefined ? {} : { profile: loadProfileDirectory('dsh', profileDir, installAnchor, { carrierBundles }) },
+      ...profileDir === undefined ? {} : {
+        profile: loadProfileDirectory('dsh', profileDir, installAnchor, carrierBundles === undefined ? {} : { carrierBundles }),
+      },
     })
   }
 }
