@@ -502,6 +502,8 @@ describe('loadProfile', () => {
     expect(kept.layers.map(layer => layer.packageName)).toEqual(['listed', 'carried'])
     const keptResolution = await createRuntimeResolution({ installAnchor: anchor, profile: kept, home })
     expect(keptResolution.entries.find(entry => entry.name === 'carried-dep')?.scope).toBe('installation')
+    // The successor a plugin installation publishes keeps the carriers, or the router demands a restart.
+    await expect(keptResolution.computeLatestResolution()).resolves.toEqual(keptResolution)
     // Without the carrier list the same profile cannot see it, which is what the hook exists for.
     const plain = loadProfileDirectory('dsh', reset, anchor)
     expect(plain.layers.map(layer => layer.packageName)).toEqual(['listed'])

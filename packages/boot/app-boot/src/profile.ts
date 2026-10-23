@@ -471,9 +471,9 @@ export async function createRuntimeResolution(
   const { installAnchor, profile, home = resolveDshHome() } = options
   const profilesDir = join(home, PROFILES_DIR)
   const manifest = readOptionalProfileManifest(profile)
+  const carrierLayers = profile?.layers.filter(layer => layer.carrier === true) ?? []
   const { packageNames, packageDirs, declarers, versions } = collectInstallationScopePackages(
-    installAnchor, new Set(profile?.skippedBundles.map(skipped => skipped.packageName)),
-    profile?.layers.filter(layer => layer.carrier === true) ?? [],
+    installAnchor, new Set(profile?.skippedBundles.map(skipped => skipped.packageName)), carrierLayers,
   )
   const profileDeclarers = new Map<string, string>()
   const profileVersions = new Map<string, string | undefined>()
@@ -483,7 +483,9 @@ export async function createRuntimeResolution(
     : collectProfileScopePackages(profile, packageNames, profileDeclarers, profileVersions)
   const linkedRoots = profile === undefined ? [] : linkedProfileRoots(profile, profilesDir)
   // The Promise return type is the pre-stable API; construction has no asynchronous step.
-  return await Promise.resolve(new ProfileRuntimeResolution({ installAnchor, profileDir: profile?.dir, home }, {
+  return await Promise.resolve(new ProfileRuntimeResolution({
+    installAnchor, profileDir: profile?.dir, home, carrierBundles: carrierLayers.map(layer => layer.packageName),
+  }, {
     profilesDir,
     profileDir: profile?.dir,
     localPackageNames: Object.freeze(localPackageNames),
@@ -506,6 +508,8 @@ interface ResolutionSource {
   installAnchor: string
   home: string
   profileDir: string | undefined
+  /** Carrier bundles the profile was loaded with; a successor loads the same ones, so they stay installation packages. */
+  carrierBundles: readonly string[]
 }
 
 /**
@@ -536,15 +540,16 @@ export class ProfileRuntimeResolution implements RuntimeResolution {
 
   /**
    * Compute the latest generation from the same installation, profile directory, and Harness home, rereading the
-   * profile's manifest, bundle selection, and installed packages from disk, without retaining synthetic layers.
+   * profile's manifest, bundle selection, and installed packages from disk with the same carrier bundles, without retaining
+   * synthetic layers.
    * With no profile directory, only installation packages are recomputed. This instance is unchanged.
    * @returns a new resolution for the latest generation.
    */
   computeLatestResolution(): Promise<ProfileRuntimeResolution> {
-    const { installAnchor, home, profileDir } = this.#source
+    const { installAnchor, home, profileDir, carrierBundles } = this.#source
     return createRuntimeResolution({
       installAnchor, home,
-      ...profileDir === undefined ? {} : { profile: loadProfileDirectory('dsh', profileDir, installAnchor) },
+      ...profileDir === undefined ? {} : { profile: loadProfileDirectory('dsh', profileDir, installAnchor, { carrierBundles }) },
     })
   }
 }
