@@ -976,7 +976,8 @@ async function main(): Promise<void> {
     updates.dispose()
   })
 
-  const applicationIconPath = development ? join(app.getAppPath(), 'resources', 'icon-windows.png')
+  // scripts/dev.ts names a brand's icons (developmentIconEnvironment); packaged runs read electron-builder's copies.
+  const applicationIconPath = development ? process.env.DSH_DESKTOP_DEV_ICON ?? join(app.getAppPath(), 'resources', 'icon-windows.png')
     : join(process.resourcesPath, 'icon.png')
   app.setAboutPanelOptions({
     applicationName: currentDesktopLocale().messages.aboutProduct,
@@ -1038,7 +1039,8 @@ async function main(): Promise<void> {
     tray?.relabel()
   }
   refreshApplicationMenu()
-  const trayIconPath = development ? join(app.getAppPath(), 'resources', 'tray-windows.ico') : join(process.resourcesPath, 'tray.ico')
+  const trayIconPath = development ? process.env.DSH_DESKTOP_DEV_TRAY_ICON ?? join(app.getAppPath(), 'resources', 'tray-windows.ico')
+    : join(process.resourcesPath, 'tray.ico')
   if (process.platform === 'win32') {
     // The tray is the way back to a hidden window; without it, relaunching the application still focuses it.
     try {

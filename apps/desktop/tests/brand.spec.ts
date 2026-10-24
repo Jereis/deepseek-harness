@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { brandMessages, DEFAULT_DESKTOP_BRAND, DESKTOP_BRAND } from '../src/brand.ts'
 import { en, zh } from '../src/locale.ts'
-import { DEFAULT_DESKTOP_BRAND as BUILD_DEFAULT, INSTALLER_ASSETS, readDesktopBrand } from '../scripts/desktop-brand.mjs'
+import { DEFAULT_DESKTOP_BRAND as BUILD_DEFAULT, developmentIconEnvironment, INSTALLER_ASSETS, readDesktopBrand } from '../scripts/desktop-brand.mjs'
 import { createElectronBuilderConfig } from '../scripts/electron-builder-config.mjs'
 
 const roots: string[] = []
@@ -70,6 +70,15 @@ describe('desktop brand', () => {
     expect(read.icons).toEqual({ windowsTray: join(file, '..', 'icons', 'tray.ico') })
     expect(read.installerAssets).toBe(join(file, '..', 'installer'))
     expect(readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile(LANGTU) })).not.toHaveProperty('installerAssets')
+  })
+
+  it('points unpackaged runs at the brand Windows icons, and at nothing without a brand', () => {
+    const file = brandFile({ ...LANGTU, icons: { windows: 'icons/app.png', windowsTray: 'icons/tray.ico', macos: 'icons/mac.png' } })
+    expect(developmentIconEnvironment({ DSH_DESKTOP_BRAND_FILE: file })).toEqual({
+      DSH_DESKTOP_DEV_ICON: join(file, '..', 'icons', 'app.png'),
+      DSH_DESKTOP_DEV_TRAY_ICON: join(file, '..', 'icons', 'tray.ico'),
+    })
+    expect(developmentIconEnvironment({})).toEqual({})
   })
 
   it('rejects an installer artwork directory missing any converted asset', () => {

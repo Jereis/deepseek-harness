@@ -12,3 +12,8 @@ export declare function readDesktopBrand(env?: NodeJS.ProcessEnv): {
   shortcutName?: string
   welcome?: DesktopWelcomeDelegate
 }
+
+export declare function developmentIconEnvironment(env?: NodeJS.ProcessEnv): {
+  DSH_DESKTOP_DEV_ICON?: string
+  DSH_DESKTOP_DEV_TRAY_ICON?: string
+}

@@ -114,3 +114,17 @@ export function readDesktopBrand(env = process.env) {
     ...(welcome === undefined ? {} : { welcome }),
   }
 }
+
+/**
+ * Environment that points an unpackaged run at the brand's Windows icons; `scripts/dev.ts` passes it to Electron.
+ * Packaged runs ignore it and read the copies electron-builder places in `process.resourcesPath`.
+ * @param {NodeJS.ProcessEnv} env - build environment.
+ * @returns {{ DSH_DESKTOP_DEV_ICON?: string, DSH_DESKTOP_DEV_TRAY_ICON?: string }} one variable per icon the brand replaces.
+ */
+export function developmentIconEnvironment(env = process.env) {
+  const { icons } = readDesktopBrand(env)
+  return {
+    ...(icons.windows === undefined ? {} : { DSH_DESKTOP_DEV_ICON: icons.windows }),
+    ...(icons.windowsTray === undefined ? {} : { DSH_DESKTOP_DEV_TRAY_ICON: icons.windowsTray }),
+  }
+}
