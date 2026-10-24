@@ -1,10 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { brandMessages, DEFAULT_DESKTOP_BRAND, DESKTOP_BRAND } from '../src/brand.ts'
 import { en, zh } from '../src/locale.ts'
-import { DEFAULT_DESKTOP_BRAND as BUILD_DEFAULT, readDesktopBrand } from '../scripts/desktop-brand.mjs'
+import { DEFAULT_DESKTOP_BRAND as BUILD_DEFAULT, INSTALLER_ASSETS, readDesktopBrand } from '../scripts/desktop-brand.mjs'
 import { createElectronBuilderConfig } from '../scripts/electron-builder-config.mjs'
 
 const roots: string[] = []
@@ -62,6 +62,24 @@ describe('desktop brand', () => {
     expect(read.shortcutName).toBe('廊图网小助手')
   })
 
+  it('reads a tray icon and an installer artwork directory beside the brand file, and neither by default', () => {
+    const file = brandFile({ ...LANGTU, icons: { windowsTray: 'icons/tray.ico' }, installerAssets: 'installer' })
+    mkdirSync(join(file, '..', 'installer'))
+    for (const asset of INSTALLER_ASSETS) writeFileSync(join(file, '..', 'installer', `${asset}.png`), '')
+    const read = readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: file })
+    expect(read.icons).toEqual({ windowsTray: join(file, '..', 'icons', 'tray.ico') })
+    expect(read.installerAssets).toBe(join(file, '..', 'installer'))
+    expect(readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile(LANGTU) })).not.toHaveProperty('installerAssets')
+  })
+
+  it('rejects an installer artwork directory missing any converted asset', () => {
+    const file = brandFile({ ...LANGTU, installerAssets: 'installer' })
+    mkdirSync(join(file, '..', 'installer'))
+    writeFileSync(join(file, '..', 'installer', 'brand.png'), '')
+    expect(() => readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: file }))
+      .toThrow('installerAssets lacks brand-2x.png, brand-dark.png, brand-dark-2x.png, uninstaller-sidebar.png')
+  })
+
   it('reads the optional menu and displayed-version members, and neither by default', () => {
     const file = brandFile({ ...LANGTU, cliCommandMenu: false })
     expect(readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: file }).brand).toEqual({ ...LANGTU, cliCommandMenu: false })
@@ -107,6 +125,8 @@ describe('desktop brand', () => {
     ['a home directory that is a path', { homeDirName: '../escape' }, 'homeDirName'],
     ['an empty display name', { displayName: { en: 'Langtu', zh: ' ' } }, 'displayName.zh'],
     ['a non-PNG icon', { icons: { windows: 'app.ico' } }, 'icons.windows'],
+    ['a non-ICO tray icon', { icons: { windowsTray: 'tray.png' } }, 'icons.windowsTray'],
+    ['an empty installer artwork directory path', { installerAssets: ' ' }, 'installerAssets'],
   ])('rejects %s', (_label, override, field) => {
     expect(() => readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile({ ...LANGTU, ...override }) })).toThrow(field)
   })
@@ -118,6 +138,12 @@ describe('desktop brand', () => {
     expect(config.artifactName.startsWith('langtu-assistant-')).toBe(true)
     expect(config.nsis.shortcutName).toBe('廊图网小助手')
     expect(config.extraMetadata).not.toHaveProperty('dshDesktopUserDataDir')
+  })
+
+  it('packages the brand tray icon, and the upstream one without it', () => {
+    const tray = (brand: object) => packageConfig({ ...LANGTU, ...brand }).extraResources[2]?.from
+    expect(tray({ icons: { windowsTray: '/brand/tray.ico' } })).toBe('/brand/tray.ico')
+    expect(tray({})).toMatch(/resources[\\/]tray-windows\.ico$/u)
   })
 
   it('hands the brand userData directory to the uninstaller through the packaged manifest', () => {

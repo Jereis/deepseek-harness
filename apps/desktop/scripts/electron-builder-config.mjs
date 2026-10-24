@@ -53,8 +53,9 @@ export function createElectronBuilderConfig(
   preparedRuntimeVersion = undefined,
 ) {
   const appId = resolveDesktopAppId(env)
-  const { brand, icons, shortcutName } = readDesktopBrand(env)
+  const { brand, icons, installerAssets, shortcutName } = readDesktopBrand(env)
   const windowsIcon = icons.windows ?? fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url))
+  const windowsTrayIcon = icons.windowsTray ?? fileURLToPath(new URL('../resources/tray-windows.ico', import.meta.url))
   const macOSIcon = icons.macos ?? fileURLToPath(new URL('../resources/icon-macos.png', import.meta.url))
   const targetPlatform = env.DSH_DESKTOP_TARGET_PLATFORM
   const resolvedPlatform = targetPlatform ?? hostPlatform
@@ -133,7 +134,7 @@ export function createElectronBuilderConfig(
       if (resolvedPlatform !== 'win32') return true
       await promisify(execFile)('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
         fileURLToPath(new URL('./prepare-windows-installer.ps1', import.meta.url)),
-        '-OutputDirectory', join(buildPaths.root, 'installer-ui')], {
+        '-OutputDirectory', join(buildPaths.root, 'installer-ui'), ...installerAssets === undefined ? [] : ['-AssetsDirectory', installerAssets]], {
         env: scrubWindowsSigningEnvironment(env), windowsHide: true,
       })
       if (windowsSigner !== undefined) {
@@ -163,7 +164,7 @@ export function createElectronBuilderConfig(
       { from: buildPaths.runtime, to: 'runtime' },
       { from: windowsIcon, to: 'icon.png' },
       // Windows tray bitmaps; macOS keeps the Dock and ships no menu bar icon.
-      ...(packagesWindows ? [{ from: fileURLToPath(new URL('../resources/tray-windows.ico', import.meta.url)), to: 'tray.ico' }] : []),
+      ...(packagesWindows ? [{ from: windowsTrayIcon, to: 'tray.ico' }] : []),
     ],
     mac: {
       icon: macOSIcon,

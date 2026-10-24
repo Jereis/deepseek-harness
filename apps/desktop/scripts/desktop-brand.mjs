@@ -1,6 +1,6 @@
 /** Read a distribution's product identity for the build (tsdown define, electron-builder). */
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { valid } from 'semver'
 
@@ -21,6 +21,9 @@ const WELCOME_GATE = /^[A-Za-z0-9_$.-]+(?:\/[A-Za-z0-9_$.-]+)+$/u
 /** userData path relative to the application-data directory: 1–4 plain segments joined by `/`. */
 const USER_DATA_DIR = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}(?:\/[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}){0,3}$/u
 
+/** Installer artwork `prepare-windows-installer.ps1` converts; a brand's `installerAssets` must hold every one. */
+export const INSTALLER_ASSETS = Object.freeze(['brand', 'brand-2x', 'brand-dark', 'brand-dark-2x', 'uninstaller-sidebar'])
+
 const PATTERNS = {
   productName: /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/u,
   protocolScheme: /^[a-z][a-z0-9+.-]{1,31}$/u,
@@ -31,14 +34,16 @@ const PATTERNS = {
 /**
  * The brand this build uses: DSH_DESKTOP_BRAND_FILE when set, upstream's otherwise.
  * The file is JSON with every `DesktopBrand` field, plus optional `icons.windows` /
- * `icons.macos` (PNG paths relative to the file), `shortcutName`, and `welcome`
+ * `icons.macos` (PNG paths relative to the file), `icons.windowsTray` (multi-size ICO replacing
+ * `resources/tray-windows.ico`), `installerAssets` (directory replacing `installer/assets`, holding
+ * every {@link INSTALLER_ASSETS} PNG), `shortcutName`, and `welcome`
  * (`page`: application-origin path the welcome window loads; `gate`: Host `/api` RPC
  * method answering whether the welcome entry is required; see `src/welcome-delegate.ts`),
  * `cliCommandMenu` (`false` keeps the command-line manager out of installed builds' menu),
  * and `userDataDir` (Electron userData relative to the application-data directory, 1–4 `/`-separated segments).
  * DSH_DESKTOP_DISPLAY_VERSION, a semantic version, becomes the brand's displayed `version`.
  * @param {NodeJS.ProcessEnv} env - build environment.
- * @returns {{ brand: import('../src/brand.ts').DesktopBrand, icons: { windows?: string, macos?: string }, shortcutName?: string, welcome?: import('../src/welcome-delegate.ts').DesktopWelcomeDelegate }}
+ * @returns {{ brand: import('../src/brand.ts').DesktopBrand, icons: { windows?: string, macos?: string, windowsTray?: string }, installerAssets?: string, shortcutName?: string, welcome?: import('../src/welcome-delegate.ts').DesktopWelcomeDelegate }}
  */
 export function readDesktopBrand(env = process.env) {
   const file = env.DSH_DESKTOP_BRAND_FILE?.trim()
@@ -46,6 +51,7 @@ export function readDesktopBrand(env = process.env) {
   const path = resolve(file)
   const value = JSON.parse(readFileSync(path, 'utf8'))
   const fail = reason => new Error(`desktop brand: ${path}: ${reason}`)
+  const beside = file => isAbsolute(file) ? file : resolve(dirname(path), file)
   for (const [field, pattern] of Object.entries(PATTERNS)) {
     if (typeof value?.[field] !== 'string' || !pattern.test(value[field])) throw fail(`${field} must match ${pattern}`)
   }
@@ -62,7 +68,19 @@ export function readDesktopBrand(env = process.env) {
     const icon = value.icons?.[platform]
     if (icon === undefined) continue
     if (typeof icon !== 'string' || !icon.endsWith('.png')) throw fail(`icons.${platform} must be a PNG path`)
-    icons[platform] = isAbsolute(icon) ? icon : resolve(dirname(path), icon)
+    icons[platform] = beside(icon)
+  }
+  const tray = value.icons?.windowsTray
+  if (tray !== undefined) {
+    if (typeof tray !== 'string' || !tray.endsWith('.ico')) throw fail('icons.windowsTray must be an ICO path')
+    icons.windowsTray = beside(tray)
+  }
+  let installerAssets
+  if (value.installerAssets !== undefined) {
+    if (typeof value.installerAssets !== 'string' || value.installerAssets.trim() === '') throw fail('installerAssets must be a directory path')
+    installerAssets = beside(value.installerAssets)
+    const missing = INSTALLER_ASSETS.filter(asset => !existsSync(resolve(installerAssets, `${asset}.png`)))
+    if (missing.length > 0) throw fail(`installerAssets lacks ${missing.map(asset => `${asset}.png`).join(', ')}`)
   }
   let welcome
   if (value.welcome !== undefined) {
@@ -91,6 +109,7 @@ export function readDesktopBrand(env = process.env) {
   return {
     brand,
     icons,
+    ...(installerAssets === undefined ? {} : { installerAssets }),
     ...(value.shortcutName === undefined ? {} : { shortcutName: value.shortcutName }),
     ...(welcome === undefined ? {} : { welcome }),
   }
