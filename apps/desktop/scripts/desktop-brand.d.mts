@@ -11,6 +11,7 @@ export declare function readDesktopBrand(env?: NodeJS.ProcessEnv): {
   installerAssets?: string
   shortcutName?: string
   welcome?: DesktopWelcomeDelegate
+  packageName?: string
 }
 
 export declare function developmentIconEnvironment(env?: NodeJS.ProcessEnv): {

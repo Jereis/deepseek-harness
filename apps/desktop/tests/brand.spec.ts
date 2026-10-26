@@ -155,6 +155,15 @@ describe('desktop brand', () => {
     expect(tray({})).toMatch(/resources[\\/]tray-windows\.ico$/u)
   })
 
+  it('names the packaged manifest from the brand, and keeps the upstream name without it', () => {
+    expect(packageConfig({ ...LANGTU, packageName: 'langtu-assistant' }).extraMetadata.name).toBe('langtu-assistant')
+    expect(packageConfig(LANGTU).extraMetadata).not.toHaveProperty('name')
+  })
+
+  it.each(['@langtu/assistant', 'Langtu', ' ', 7])('rejects the package name %j', (packageName) => {
+    expect(() => readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile({ ...LANGTU, packageName }) })).toThrow('packageName')
+  })
+
   it('hands the brand userData directory to the uninstaller through the packaged manifest', () => {
     expect(packageConfig({ ...LANGTU, userDataDir: 'LangtuAssistant/desktop' }).extraMetadata.dshDesktopUserDataDir)
       .toBe('LangtuAssistant/desktop')

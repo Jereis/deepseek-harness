@@ -18,6 +18,9 @@ const WELCOME_PAGE = /^\/(?:[A-Za-z0-9_~-][A-Za-z0-9._~-]*\/?)*$/u
 /** Host `/api` RPC method of a delegated welcome gate, in Connection's `segment/segment` grammar. */
 const WELCOME_GATE = /^[A-Za-z0-9_$.-]+(?:\/[A-Za-z0-9_$.-]+)+$/u
 
+/** Unscoped lowercase package name: electron-builder derives the updater cache directory from it without sanitizing. */
+const PACKAGE_NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/u
+
 /** userData path relative to the application-data directory: 1–4 plain segments joined by `/`. */
 const USER_DATA_DIR = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}(?:\/[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}){0,3}$/u
 
@@ -40,10 +43,12 @@ const PATTERNS = {
  * (`page`: application-origin path the welcome window loads; `gate`: Host `/api` RPC
  * method answering whether the welcome entry is required; see `src/welcome-delegate.ts`),
  * `cliCommandMenu` (`false` keeps the command-line manager out of installed builds' menu),
- * and `userDataDir` (Electron userData relative to the application-data directory, 1–4 `/`-separated segments).
+ * `userDataDir` (Electron userData relative to the application-data directory, 1–4 `/`-separated segments),
+ * and `packageName` (packaged manifest `name`, which names the updater cache `%LOCALAPPDATA%\<packageName>-updater`;
+ * upstream's `@deepseek-ai/dsh-desktop` otherwise, shared by every distribution that keeps it).
  * DSH_DESKTOP_DISPLAY_VERSION, a semantic version, becomes the brand's displayed `version`.
  * @param {NodeJS.ProcessEnv} env - build environment.
- * @returns {{ brand: import('../src/brand.ts').DesktopBrand, icons: { windows?: string, macos?: string, windowsTray?: string }, installerAssets?: string, shortcutName?: string, welcome?: import('../src/welcome-delegate.ts').DesktopWelcomeDelegate }}
+ * @returns {{ brand: import('../src/brand.ts').DesktopBrand, icons: { windows?: string, macos?: string, windowsTray?: string }, installerAssets?: string, shortcutName?: string, welcome?: import('../src/welcome-delegate.ts').DesktopWelcomeDelegate, packageName?: string }}
  */
 export function readDesktopBrand(env = process.env) {
   const file = env.DSH_DESKTOP_BRAND_FILE?.trim()
@@ -94,6 +99,9 @@ export function readDesktopBrand(env = process.env) {
     || value.userDataDir.split('/').some(segment => segment.endsWith('.') || segment.endsWith(' ')))) {
     throw fail(`userDataDir must match ${USER_DATA_DIR} with no segment ending in a dot or space`)
   }
+  if (value.packageName !== undefined && (typeof value.packageName !== 'string' || !PACKAGE_NAME.test(value.packageName))) {
+    throw fail(`packageName must match ${PACKAGE_NAME}`)
+  }
   const version = env.DSH_DESKTOP_DISPLAY_VERSION?.trim()
   if (version && valid(version) === null) throw new Error('desktop brand: DSH_DESKTOP_DISPLAY_VERSION must be a semantic version')
   const brand = Object.freeze({
@@ -112,6 +120,7 @@ export function readDesktopBrand(env = process.env) {
     ...(installerAssets === undefined ? {} : { installerAssets }),
     ...(value.shortcutName === undefined ? {} : { shortcutName: value.shortcutName }),
     ...(welcome === undefined ? {} : { welcome }),
+    ...(value.packageName === undefined ? {} : { packageName: value.packageName }),
   }
 }
 

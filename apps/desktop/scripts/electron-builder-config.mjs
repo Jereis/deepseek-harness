@@ -53,7 +53,7 @@ export function createElectronBuilderConfig(
   preparedRuntimeVersion = undefined,
 ) {
   const appId = resolveDesktopAppId(env)
-  const { brand, icons, installerAssets, shortcutName } = readDesktopBrand(env)
+  const { brand, icons, installerAssets, shortcutName, packageName } = readDesktopBrand(env)
   const windowsIcon = icons.windows ?? fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url))
   const windowsTrayIcon = icons.windowsTray ?? fileURLToPath(new URL('../resources/tray-windows.ico', import.meta.url))
   const macOSIcon = icons.macos ?? fileURLToPath(new URL('../resources/icon-macos.png', import.meta.url))
@@ -114,6 +114,9 @@ export function createElectronBuilderConfig(
     appId,
     protocols: [{ name: brand.displayName.en, schemes: [brand.protocolScheme] }],
     extraMetadata: {
+      // The manifest name names the updater cache and installer-log directory (`<name>-updater`), so two
+      // distributions sharing upstream's name would empty each other's pending update.
+      ...packageName === undefined ? {} : { name: packageName },
       dshDesktopAppId: appId,
       // The uninstaller removes this userData instead of the package-name one (windows-directory-installer.mjs).
       ...brand.userDataDir === undefined ? {} : { dshDesktopUserDataDir: brand.userDataDir },
