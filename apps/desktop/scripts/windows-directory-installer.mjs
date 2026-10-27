@@ -80,7 +80,7 @@ export function installWindowsDirectoryInstaller() {
     const uninstaller = join(directory, 'uninstaller.nsh')
     await writeFile(uninstaller, directoryUninstaller(await readFile(join(templates, 'uninstaller.nsh'), 'utf8')))
     adapted = replaceOnce(adapted, '!include "uninstaller.nsh"', `!include "${uninstaller}"`)
-    return `${userDataDirDefine(this.packager.config.extraMetadata)}!define DSH_UPDATER_CACHE_NAME "${this.packager.appInfo.updaterCacheDirName}"\n!define DSH_SEVENZIP_PATH "${tool}"\n!define DSH_SEVENZIP_LICENSE_DIR "${dirname(dirname(sourceTool))}"\n${await compute.call(this, adapted, ...args)}`
+    return `${userDataDirDefine(this.packager.config.extraMetadata)}${displayNameDefines(this.packager.config.extraMetadata)}!define DSH_UPDATER_CACHE_NAME "${this.packager.appInfo.updaterCacheDirName}"\n!define DSH_SEVENZIP_PATH "${tool}"\n!define DSH_SEVENZIP_LICENSE_DIR "${dirname(dirname(sourceTool))}"\n${await compute.call(this, adapted, ...args)}`
   }
 }
 
@@ -92,6 +92,18 @@ export function installWindowsDirectoryInstaller() {
 export function userDataDirDefine(extraMetadata) {
   const directory = extraMetadata?.dshDesktopUserDataDir
   return typeof directory === 'string' ? `!define DSH_USER_DATA_DIR "${directory.replaceAll('/', '\\')}"\n` : ''
+}
+
+/**
+ * Name the brand to the installer's and uninstaller's messages, which otherwise keep upstream's name.
+ * @param {Record<string, unknown> | null | undefined} extraMetadata - electron-builder `extraMetadata`; `desktop-brand.mjs` validated `dshDesktopDisplayName`.
+ * @returns {string} `DSH_DISPLAY_NAME_EN` and `DSH_DISPLAY_NAME_ZH` defines, or nothing without a display name.
+ */
+export function displayNameDefines(extraMetadata) {
+  const name = /** @type {{ en?: unknown, zh?: unknown } | undefined} */ (extraMetadata?.dshDesktopDisplayName)
+  if (typeof name?.en !== 'string' || typeof name.zh !== 'string') return ''
+  const quote = (/** @type {string} */ value) => value.replaceAll('$', '$$$$').replaceAll('"', '$\\"')
+  return `!define DSH_DISPLAY_NAME_EN "${quote(name.en)}"\n!define DSH_DISPLAY_NAME_ZH "${quote(name.zh)}"\n`
 }
 
 /**

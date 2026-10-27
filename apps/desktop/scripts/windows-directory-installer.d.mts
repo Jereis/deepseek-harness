@@ -22,6 +22,13 @@ export function directoryInstallerExits(source: string): string
 export function userDataDirDefine(extraMetadata: Readonly<Record<string, unknown>> | null | undefined): string
 
 /**
+ * Name the brand to the installer's and uninstaller's messages, which otherwise keep upstream's name.
+ * @param extraMetadata - electron-builder `extraMetadata`; `desktop-brand.mjs` validated `dshDesktopDisplayName`.
+ * @returns `DSH_DISPLAY_NAME_EN` and `DSH_DISPLAY_NAME_ZH` defines, or nothing without a display name.
+ */
+export function displayNameDefines(extraMetadata: Readonly<Record<string, unknown>> | null | undefined): string
+
+/**
  * Keep user-data removal in the native helper, which refuses unsafe roots and never follows links.
  * @param source - Pinned upstream uninstaller source.
  * @returns Uninstaller with long-path application removal and no upstream RMDir data removal.

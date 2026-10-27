@@ -164,6 +164,10 @@ describe('desktop brand', () => {
     expect(() => readDesktopBrand({ DSH_DESKTOP_BRAND_FILE: brandFile({ ...LANGTU, packageName }) })).toThrow('packageName')
   })
 
+  it('hands the brand display names to the installer through the packaged manifest', () => {
+    expect(packageConfig(LANGTU).extraMetadata.dshDesktopDisplayName).toEqual(LANGTU.displayName)
+  })
+
   it('hands the brand userData directory to the uninstaller through the packaged manifest', () => {
     expect(packageConfig({ ...LANGTU, userDataDir: 'LangtuAssistant/desktop' }).extraMetadata.dshDesktopUserDataDir)
       .toBe('LangtuAssistant/desktop')

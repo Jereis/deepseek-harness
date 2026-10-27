@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { expect, it } from 'vitest'
-import { directoryInstallerExits, directoryInstallSection, directoryUninstaller, userDataDirDefine } from '../scripts/windows-directory-installer.mjs'
+import { directoryInstallerExits, directoryInstallSection, directoryUninstaller, displayNameDefines, userDataDirDefine } from '../scripts/windows-directory-installer.mjs'
 
 const require = createRequire(import.meta.url)
 const section = readFileSync(join(dirname(require.resolve('app-builder-lib/package.json')),
@@ -54,4 +54,13 @@ it('defines a brand userData directory for the uninstaller with Windows separato
   expect(userDataDirDefine({ dshDesktopUserDataDir: 'LangtuAssistant/desktop' })).toBe('!define DSH_USER_DATA_DIR "LangtuAssistant\\desktop"\n')
   expect(userDataDirDefine({ dshDesktopAppId: 'com.example.app' })).toBe('')
   expect(userDataDirDefine(undefined)).toBe('')
+})
+
+it('defines the brand display names for the installer messages, escaped for NSIS, and nothing without them', () => {
+  expect(displayNameDefines({ dshDesktopDisplayName: { en: 'Langtu Assistant', zh: '廊图网小助手' } }))
+    .toBe('!define DSH_DISPLAY_NAME_EN "Langtu Assistant"\n!define DSH_DISPLAY_NAME_ZH "廊图网小助手"\n')
+  expect(displayNameDefines({ dshDesktopDisplayName: { en: 'A "$1" app', zh: 'B' } }))
+    .toBe('!define DSH_DISPLAY_NAME_EN "A $\\"$$1$\\" app"\n!define DSH_DISPLAY_NAME_ZH "B"\n')
+  expect(displayNameDefines({ dshDesktopAppId: 'com.example.app' })).toBe('')
+  expect(displayNameDefines(undefined)).toBe('')
 })

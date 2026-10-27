@@ -120,6 +120,8 @@ export function createElectronBuilderConfig(
       dshDesktopAppId: appId,
       // The uninstaller removes this userData instead of the package-name one (windows-directory-installer.mjs).
       ...brand.userDataDir === undefined ? {} : { dshDesktopUserDataDir: brand.userDataDir },
+      // The installer's and uninstaller's messages name the product by its display name.
+      dshDesktopDisplayName: brand.displayName,
       dshDesktopUpdateChannel: update?.channel ?? 'nightly',
       ...(policy === undefined ? {} : { dshMandatoryUpdatePolicy: policy }),
       ...buildVersion === productVersion ? {} : { version: buildVersion },
