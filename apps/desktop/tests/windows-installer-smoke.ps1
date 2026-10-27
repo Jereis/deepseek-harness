@@ -255,6 +255,39 @@ try {
     $registration = Get-ItemProperty ('HKCU:\Software\' + $RegistryKey)
     if ($registration.InstallLocation.TrimEnd('\') -ne $installPath) { throw 'Silent update changed InstallLocation' }
     $results.Add('silent-update-retains-directory-and-ignores-unrelated-process')
+    # The application's updater runs setup visibly: progress only, then the updated application replaces it.
+    Remove-Item -LiteralPath (Join-Path $installPath 'launched.txt') -ErrorAction SilentlyContinue
+    $process = Start-Process -FilePath $Installer -ArgumentList '--updated --force-run' -PassThru -WindowStyle Normal
+    $processes.Add($process)
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    $previous = 0
+    $progressShown = $false
+    while (-not $process.HasExited) {
+        if ($timer.Elapsed.TotalSeconds -gt 60) { throw 'Visible update did not finish' }
+        if ([InstallerCapture]::FindButton($process.Id, $copy.INSTALLER_INSTALL) -ne [IntPtr]::Zero) { throw 'Visible update showed the welcome page' }
+        if ([InstallerCapture]::FindButton($process.Id, $copy.INSTALLER_FINISH) -ne [IntPtr]::Zero) { throw 'Visible update showed the finish page' }
+        $visible = [InstallerCapture]::VisibleText($process.Id)
+        if ($visible -match 'HarnessInstallerProgress[^\r\n]*?(\d+)%') {
+            $percent = [int]$Matches[1]
+            if ($percent -lt $previous) { throw 'Update progress went backwards' }
+            $previous = $percent
+            $progressShown = $true
+        }
+        Start-Sleep -Milliseconds 25
+    }
+    if ($process.ExitCode -ne 0) { throw "Visible update returned $($process.ExitCode)" }
+    if (-not $progressShown) { throw 'Visible update did not show installation progress' }
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        $app = Get-Process -Name $ProductName -ErrorAction SilentlyContinue
+        if ($app) { break }
+        Start-Sleep -Milliseconds 25
+    } while ($timer.Elapsed.TotalSeconds -lt 15)
+    if (-not $app -or $app.Path -ne $appPath) { throw 'Visible update did not launch the updated application' }
+    $processes.Add($app)
+    Dismiss $app 'Installer test application is running.'
+    if (-not $app.WaitForExit(10000)) { throw 'Updated test application did not exit' }
+    $results.Add('visible-update-shows-progress-and-launches-without-pages')
     Run-Silent ('/S /allusers /D=' + $installPath) 2
     $foreign = Join-Path $OutputDirectory 'Foreign App'
     New-Item -ItemType Directory -Path $foreign | Out-Null

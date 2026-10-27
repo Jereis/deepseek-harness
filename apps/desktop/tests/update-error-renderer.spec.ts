@@ -27,7 +27,7 @@ it.each(['en', 'zh-CN'])('keeps ordinary diagnostics folded, text-only, and keyb
   const locale = resolveDesktopLocale(language)
   const state: UpdateDialogView = { revision: 1, locale: locale.id, title: locale.messages.updateFailedTitle,
     message: locale.messages.updateStopFailed, detail: '', buttons: [locale.messages.updateAcknowledge], cancelId: 0,
-    closeLabel: locale.messages.updateClose, technicalDetailsLabel: locale.messages.updateTechnicalDetails,
+    closeLabel: locale.messages.updateClose, technicalDetailsLabel: locale.messages.updateTechnicalDetails, dismissible: true,
     technicalDetails: '<img src=x onerror="window.compromised=true">\nexit 0; shutdown acknowledged false' }
   const respond = vi.fn(async () => {})
   let publish!: (view: UpdateDialogView | null) => void
@@ -73,6 +73,26 @@ it.each(['en', 'zh-CN'])('keeps ordinary diagnostics folded, text-only, and keyb
   expect(p.element('title').textContent).toBe(locale.messages.updateChecking)
   publish(null)
   expect(backdrop.classList.contains('visible')).toBe(false)
+})
+
+it('shows an installation status without a close control or keyboard dismissal', async () => {
+  const p = page('update-dialog')
+  const locale = resolveDesktopLocale('zh-CN')
+  const state: UpdateDialogView = { revision: 1, locale: locale.id, title: locale.messages.updateTitle,
+    message: locale.messages.updateInstallingNotice, detail: locale.messages.updateInstallingNoticeDetailWindows,
+    buttons: [], cancelId: -1, closeLabel: locale.messages.updateClose, technicalDetails: '',
+    technicalDetailsLabel: locale.messages.updateTechnicalDetails, dismissible: false }
+  const respond = vi.fn(async () => {})
+  const api: UpdateDialogApi = { status: async () => state, respond, subscribe: () => () => {} }
+  Object.defineProperty(p.dom.window, 'dshUpdateDialog', { value: api })
+  p.run()
+  await expect.poll(() => p.element('dialog').hidden).toBe(false)
+  expect(p.element('title').textContent).toBe(locale.messages.updateInstallingNotice)
+  expect(p.element('close').hidden).toBe(true)
+  expect(p.element('actions').childElementCount).toBe(0)
+  p.document.dispatchEvent(new p.dom.window.KeyboardEvent('keydown', { key: 'Tab', cancelable: true }))
+  p.document.dispatchEvent(new p.dom.window.KeyboardEvent('keydown', { key: 'Escape', cancelable: true }))
+  expect(respond).not.toHaveBeenCalled()
 })
 
 it('keeps mandatory diagnostics expandable without clearing the block or authorizing installation', async () => {

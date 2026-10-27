@@ -9,14 +9,14 @@ function respond(index) {
 }
 document.getElementById('close').addEventListener('click', () => { respond(view.cancelId) })
 document.addEventListener('keydown', event => {
-  if (event.key === 'Escape' && view !== undefined) { event.preventDefault(); respond(view.cancelId) }
+  if (event.key === 'Escape' && view !== undefined) { event.preventDefault(); if (view.dismissible) respond(view.cancelId) }
   if (event.key !== 'Tab') return
-  const controls = [...document.querySelectorAll('button, details:not([hidden]) > summary, details[open]:not([hidden]) > pre')]
+  const controls = [...document.querySelectorAll('button:not([hidden]), details:not([hidden]) > summary, details[open]:not([hidden]) > pre')]
   const current = controls.indexOf(document.activeElement)
   const next = current < 0 ? (event.shiftKey ? controls.length - 1 : 0)
     : (current + (event.shiftKey ? -1 : 1) + controls.length) % controls.length
   event.preventDefault()
-  controls[next].focus()
+  controls[next]?.focus()
 })
 function render(state) {
   if (state === null) {
@@ -33,6 +33,7 @@ function render(state) {
   document.getElementById('detail').textContent = state.detail
   document.getElementById('detail').hidden = state.detail === ''
   document.getElementById('close').setAttribute('aria-label', state.closeLabel)
+  document.getElementById('close').hidden = !state.dismissible
   document.getElementById('technical-details').hidden = state.technicalDetails === ''
   document.getElementById('technical-details-label').textContent = state.technicalDetailsLabel
   document.getElementById('technical-details-content').textContent = state.technicalDetails

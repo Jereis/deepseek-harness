@@ -84,6 +84,16 @@ Function InstallerFinish
     ${If} $0 == 0
         Quit
     ${EndIf}
+    ${If} ${isUpdated}
+        ; An update has no finish page: the updated application replaces the progress window.
+        HideWindow
+        Call InstallerLaunchApp
+        ${If} ${Errors}
+            ShowWindow $HWNDPARENT 5
+            MessageBox MB_OK|MB_ICONEXCLAMATION "$(INSTALLER_UPDATE_LAUNCH_FAILED)"
+        ${EndIf}
+        Quit
+    ${EndIf}
     System::Call 'user32::DestroyWindow(p $InstallerProgressWindow)'
     StrCpy $InstallerPhase "success"
     Call InstallerCreate

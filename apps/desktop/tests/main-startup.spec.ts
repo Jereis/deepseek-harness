@@ -340,6 +340,7 @@ vi.mock('../src/update-dialog.ts', () => ({ DesktopUpdateDialog: class {
       : harness.dialog.showMessageBox(options)) as Promise<Electron.MessageBoxReturnValue>
   }
   cancel() {}
+  notice() {}
   readonly focus = harness.shellDialog.focus
   dispose() {}
 } }))

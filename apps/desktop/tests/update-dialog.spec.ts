@@ -80,6 +80,20 @@ it('accepts only a displayed choice from its own main frame and retains cancella
   expect((await next).response).toBe(0)
 })
 
+it('shows an unanswerable installation status until a later prompt replaces it', async () => {
+  const f = setup()
+  dialogs!.notice(f.parent as unknown as BrowserWindow, { message: '正在安装更新…', detail: '应用即将关闭' })
+  expect(dialogs!.isOpen).toBe(true)
+  expect(f.invoke(UPDATE_DIALOG_IPC.status)).toMatchObject({ message: '正在安装更新…', detail: '应用即将关闭', buttons: [], dismissible: false })
+  expect(() => f.invoke(UPDATE_DIALOG_IPC.respond, -1)).toThrow(/cannot be answered/)
+  expect(() => f.invoke(UPDATE_DIALOG_IPC.respond, 0)).toThrow(/cannot be answered/)
+  const failure = f.show()
+  expect(fixture.windows).toHaveLength(2)
+  expect(f.invoke(UPDATE_DIALOG_IPC.status)).toMatchObject({ buttons: ['安装并重启'], dismissible: true })
+  f.invoke(UPDATE_DIALOG_IPC.respond, 1)
+  expect((await failure).response).toBe(1)
+})
+
 it('releases visible Windows modality before destroying a dismissed dialog', async () => {
   vi.useFakeTimers()
   const f = setup()

@@ -19,11 +19,15 @@ export interface UpdateDialogView {
   readonly closeLabel: string
   readonly technicalDetails: string
   readonly technicalDetailsLabel: string
+  /** False for a status the user cannot close or answer. */
+  readonly dismissible: boolean
 }
 
 /** Electron message options with separately expandable, main-owned diagnostics. */
 export interface UpdateDialogOptions extends MessageBoxOptions {
   readonly technicalDetails?: string
+  /** False shows a status without a close control; a later prompt or `cancel` replaces it. */
+  readonly dismissible?: boolean
 }
 
 /** The document can select only a displayed response index. */
@@ -63,6 +67,7 @@ export class DesktopUpdateDialog {
       this.owned(event)
       const active = this.active
       if (active === undefined || revision !== active.view.revision) throw new Error('desktop update: stale dialog response')
+      if (!active.view.dismissible) throw new Error('desktop update: status cannot be answered')
       if (typeof index !== 'number' || !Number.isInteger(index)
         || (index !== active.view.cancelId && (index < 0 || index >= active.view.buttons.length))) {
         throw new Error('desktop update: invalid dialog response')
@@ -93,7 +98,8 @@ export class DesktopUpdateDialog {
     this.parent = parent
     const view: UpdateDialogView = { revision: ++this.revision, locale: locale.id, title: options.title ?? '', message: options.message,
       detail: options.detail ?? '', buttons, cancelId, closeLabel: locale.messages.updateClose,
-      technicalDetails: options.technicalDetails ?? '', technicalDetailsLabel: locale.messages.updateTechnicalDetails }
+      technicalDetails: options.technicalDetails ?? '', technicalDetailsLabel: locale.messages.updateTechnicalDetails,
+      dismissible: options.dismissible ?? true }
     return new Promise((resolve) => {
       const abort = (): void => { finish(cancelId) }
       const finish = (response: number, retain = false): void => {
@@ -115,6 +121,15 @@ export class DesktopUpdateDialog {
       window.webContents.once('render-process-gone', failed)
       void window.loadURL(page).catch(failed)
     })
+  }
+
+  /**
+   * Keep the backdrop with a status that offers no response, until a later prompt replaces it or `cancel` closes it.
+   * @param parent - Window that stays blocked while the status is shown.
+   * @param content - Main-owned status and explanation.
+   */
+  notice(parent: BrowserWindow, content: { message: string; detail: string }): void {
+    void this.show(parent, { ...content, buttons: [], dismissible: false })
   }
 
   /** Cancel the displayed prompt without authorizing any operation. */

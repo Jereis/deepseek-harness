@@ -117,13 +117,16 @@ export const en = {
   updateDownload: 'Download update',
   updateDownloadedTitle: 'Version {version} is ready to install',
   updateDownloadedDetail: 'The app will close during the update and reopen automatically when it is complete.',
-  updateDownloadedDetailWindows: 'The app will close temporarily during the update and reopen automatically when it is complete.\n\nThe update may take some time. Please wait and do not launch the app again during installation.',
+  updateDownloadedDetailWindows: 'The app will close temporarily during the update and reopen automatically when it is complete.\n\nInstallation progress appears in a separate window. Please wait and do not launch the app again during installation.',
   updateClose: 'Close',
   updateAcknowledge: 'OK',
   updateLater: 'Update later',
   updateDownloading: 'Downloading {percent}%…',
   updateVerifying: 'Verifying update files…',
   updateInstalling: 'Preparing to restart…',
+  updateInstallingNotice: 'Installing the update…',
+  updateInstallingNoticeDetail: 'The app is closing now and will reopen automatically when the update is complete.',
+  updateInstallingNoticeDetailWindows: 'The app is closing now. Installation progress will appear in a separate window, and the app will reopen automatically when it is complete.',
   updateRetry: 'Retry update',
   updateActiveTasks: 'Tasks are still in progress',
   updateActiveTasksDetail: 'Updating will stop the tasks in progress and restart the app. Continue?',
@@ -288,13 +291,16 @@ export const zh = {
   updateDownload: '下载更新',
   updateDownloadedTitle: '新版本 {version} 已准备就绪',
   updateDownloadedDetail: '更新期间应用将暂时关闭，完成后会自动打开。',
-  updateDownloadedDetailWindows: '更新期间应用将暂时关闭，完成后会自动打开。\n\n更新可能需要一些时间，请耐心等待，期间请勿重复启动应用。',
+  updateDownloadedDetailWindows: '更新期间应用将暂时关闭，完成后会自动打开。\n\n安装进度会显示在单独的窗口中，请耐心等待，期间请勿重复启动应用。',
   updateClose: '关闭',
   updateAcknowledge: '确定',
   updateLater: '稍后更新',
   updateDownloading: '正在下载 {percent}%…',
   updateVerifying: '正在校验更新文件…',
   updateInstalling: '正在准备重启…',
+  updateInstallingNotice: '正在安装更新…',
+  updateInstallingNoticeDetail: '应用即将关闭，更新完成后会自动打开。',
+  updateInstallingNoticeDetailWindows: '应用即将关闭，安装进度将显示在单独的窗口中，完成后应用会自动打开。',
   updateRetry: '重试更新',
   updateActiveTasks: '仍有进行中的任务',
   updateActiveTasksDetail: '更新将停止进行中的任务并重启应用，是否继续？',
@@ -393,5 +399,17 @@ export function desktopUpdateReadyConfirmation(
   return {
     message: formatDesktopMessage(messages.updateDownloadedTitle, { version }),
     detail: platform === 'win32' ? messages.updateDownloadedDetailWindows : messages.updateDownloadedDetail,
+  }
+}
+
+/**
+ * @param messages - Resolved locale copy.
+ * @param platform - Operating system installing the update.
+ * @returns The status shown after installation is confirmed and before the application closes.
+ */
+export function desktopUpdateInstallingNotice(messages: DesktopMessages, platform: string): { message: string; detail: string } {
+  return {
+    message: messages.updateInstallingNotice,
+    detail: platform === 'win32' ? messages.updateInstallingNoticeDetailWindows : messages.updateInstallingNoticeDetail,
   }
 }

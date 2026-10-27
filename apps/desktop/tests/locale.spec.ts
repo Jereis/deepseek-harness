@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { en, formatDesktopMessage, resolveDesktopLocale, resolveDesktopStartupLocale, zh } from '../src/locale.ts'
+import { desktopUpdateInstallingNotice, en, formatDesktopMessage, resolveDesktopLocale, resolveDesktopStartupLocale, zh } from '../src/locale.ts'
 
 describe('desktop locale dictionaries', () => {
   it('ships the same key set in English and Chinese', () => {
@@ -7,6 +7,11 @@ describe('desktop locale dictionaries', () => {
     expect(resolveDesktopLocale('zh-Hans-CN').messages).toEqual(zh)
     expect(resolveDesktopLocale('en-US').messages).toEqual(en)
     expect(resolveDesktopLocale('fr-FR').messages).toEqual(en)
+  })
+
+  it('names the separate installer window only on Windows', () => {
+    expect(desktopUpdateInstallingNotice(zh, 'win32')).toEqual({ message: zh.updateInstallingNotice, detail: zh.updateInstallingNoticeDetailWindows })
+    expect(desktopUpdateInstallingNotice(en, 'darwin')).toEqual({ message: en.updateInstallingNotice, detail: en.updateInstallingNoticeDetail })
   })
 
   it('formats named values without consuming unknown placeholders', () => {
