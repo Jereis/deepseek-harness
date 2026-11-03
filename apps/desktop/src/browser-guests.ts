@@ -1,7 +1,10 @@
 /** Main-process ownership and fixed isolation policy for Sidebar webview guests. */
 import { randomUUID } from 'node:crypto'
+import { join } from 'node:path'
 import { app, session, type BrowserWindow, type Session, type WebContents } from 'electron'
-import type { DesktopBrowserLeaseId, DesktopBrowserOpenRequest, DesktopBrowserReservation } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
+import type {
+  DesktopBrowserDownloadPolicy, DesktopBrowserLeaseId, DesktopBrowserOpenRequest, DesktopBrowserReservation,
+} from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import { DESKTOP_IPC } from './ipc.ts'
 
 interface GuestLease {
@@ -14,7 +17,7 @@ interface GuestLease {
 
 /** Owns workspace storage partitions independently from individual tab guests. */
 export class DesktopBrowserGuests {
-  private readonly partitions = new Map<string, string>()
+  private readonly partitions = new Map<string, { readonly name: string; readonly downloads: DesktopBrowserDownloadPolicy }>()
   private readonly leases = new Map<DesktopBrowserLeaseId, GuestLease>()
 
   /** @param hostUrl - current authenticated DSH Host, which guests cannot request. */
@@ -24,21 +27,25 @@ export class DesktopBrowserGuests {
    * Reserve one guest in a workspace's process-lifetime partition.
    * @param owner - authenticated primary application WebContents.
    * @param workspace - workspace identity received over IPC.
+   * @param options - partition policy received over IPC; fixed by the workspace's first reservation.
    * @returns opaque lease and the partition approved for it.
    */
-  acquire(owner: WebContents, workspace: unknown): DesktopBrowserReservation {
+  acquire(owner: WebContents, workspace: unknown, options?: unknown): DesktopBrowserReservation {
     if (typeof workspace !== 'string' || workspace.length === 0 || workspace.length > 4096) {
       throw new Error('desktop browser: a workspace storage identity is required')
     }
+    const downloads = downloadPolicy(options)
     let partition = this.partitions.get(workspace)
     if (partition === undefined) {
-      partition = `dsh-sidebar-browser-${randomUUID()}`
-      this.configureSession(session.fromPartition(partition))
+      partition = { name: `dsh-sidebar-browser-${randomUUID()}`, downloads }
+      this.configureSession(session.fromPartition(partition.name), downloads)
       this.partitions.set(workspace, partition)
+    } else if (partition.downloads !== downloads) {
+      throw new Error('desktop browser: a workspace keeps the download policy of its first reservation')
     }
     const lease = randomUUID() as DesktopBrowserLeaseId
-    this.leases.set(lease, { owner, partition, attached: false })
-    return { lease, partition }
+    this.leases.set(lease, { owner, partition: partition.name, attached: false })
+    return { lease, partition: partition.name }
   }
 
   /**
@@ -138,12 +145,16 @@ export class DesktopBrowserGuests {
     owner.once('destroyed', releaseAll)
   }
 
-  private configureSession(browserSession: Session): void {
+  private configureSession(browserSession: Session, downloads: DesktopBrowserDownloadPolicy): void {
     browserSession.setPermissionRequestHandler((_contents, _permission, callback) => { callback(false) })
     browserSession.setPermissionCheckHandler(() => false)
     browserSession.setDevicePermissionHandler(() => false)
     browserSession.setDisplayMediaRequestHandler((_request, callback) => { callback({}) })
-    browserSession.on('will-download', (event) => { event.preventDefault() })
+    browserSession.on('will-download', (event, item) => {
+      if (downloads !== 'save-dialog') { event.preventDefault(); return }
+      // No save path set: Electron asks with the system Save As dialog.
+      item.setSaveDialogOptions({ defaultPath: join(app.getPath('downloads'), item.getFilename()) })
+    })
     browserSession.webRequest.onBeforeRequest((details, callback) => {
       const url = new URL(details.url)
       const network = ['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol)
@@ -167,4 +178,17 @@ export class DesktopBrowserGuests {
     return url.port === host.port
       && (url.hostname === host.hostname || ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))
   }
+}
+
+/**
+ * @param options - acquire options received over IPC.
+ * @returns the validated download policy; anything unrecognised is refused.
+ */
+function downloadPolicy(options: unknown): DesktopBrowserDownloadPolicy {
+  if (options === undefined || options === null) return 'cancel'
+  if (typeof options !== 'object') throw new Error('desktop browser: invalid guest options')
+  const value: unknown = (options as { downloads?: unknown }).downloads
+  if (value === undefined || value === 'cancel') return 'cancel'
+  if (value === 'save-dialog') return 'save-dialog'
+  throw new Error('desktop browser: unknown download policy')
 }
