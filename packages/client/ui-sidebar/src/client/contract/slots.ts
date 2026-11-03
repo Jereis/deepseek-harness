@@ -34,6 +34,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * the sidebar owns the button and resolves its label from list metadata.
      */
     'sidebar.panellist': { kind: 'list'; scope: 'root'; owner: SidebarPanelIconOwnerProps }
+    /**
+     * Content rendered directly below a global panel row, such as a
+     * panel's own sub-navigation. Each registration's id names the
+     * `sidebar.panellist` row it follows; the occupant decides from
+     * `wide` and `active` whether to draw anything.
+     */
+    'sidebar.panellist.inline': { kind: 'list'; scope: 'root'; owner: SidebarPanelInlineOwnerProps }
     /** Rows of the panel list's More menu; the sidebar shows More only while this list has registrations. */
     'sidebar.panellist.actions': { kind: 'list'; scope: 'root'; owner: SidebarPanelActionsOwnerProps }
     /**
@@ -74,6 +81,14 @@ export interface SidebarPanelIconOwnerProps {
   /** Requested square edge in pixels. */
   size: number
   /** Whether this panel is selected in the main column. */
+  active: boolean
+}
+
+/** Column and selection state supplied to a panel row's inline content. */
+export interface SidebarPanelInlineOwnerProps {
+  /** Whether the sidebar is expanded; false in the collapsed rail. */
+  wide: boolean
+  /** Whether the row's panel is selected in the main column. */
   active: boolean
 }
 
@@ -175,6 +190,8 @@ export type SidebarRootInjected = {
     entryPins: ObservableSnapshot<readonly string[]>
     /** Whether `sidebar.panellist.actions` has registrations. */
     entryActions: ObservableSnapshot<boolean>
+    /** Panel ids with a `sidebar.panellist.inline` registration. */
+    inlinePanels: ObservableSnapshot<readonly string[]>
   }
 }
 
@@ -190,6 +207,7 @@ export type SidebarRootComponentProps =
     | 'sidebar.brand.name'
     | 'sidebar.toggle.badge'
     | 'sidebar.panellist'
+    | 'sidebar.panellist.inline'
     | 'sidebar.panellist.actions'
     | 'sidebar.workspaces'
     | 'sidebar.settings'

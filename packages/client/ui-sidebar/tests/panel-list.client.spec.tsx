@@ -334,6 +334,62 @@ describe('sidebar global panels', () => {
   })
 })
 
+describe('sidebar panel inline content', () => {
+  /** Inline occupant that reports the owner share it receives. */
+  function Inline({ wide, active }: PropsRuntime<'sidebar.panellist.inline'>) {
+    return <div data-testid="alpha-inline" data-wide={wide} data-active={active}>Alpha inline</div>
+  }
+
+  async function mountInline(runtime: SlotTestRuntime) {
+    return runtime.mount({
+      inject: ['slots'],
+      apply(ctx: Context) {
+        ctx.slots.inject('sidebar.panellist.inline', () => ctx.slots.register(
+          { name: 'sidebar.panellist.inline', id: ALPHA }, Inline,
+        ))
+      },
+    })
+  }
+
+  it('renders nothing for rows without inline registrations', async () => {
+    const { runtime, locale, view } = await bench()
+    await mountPanels(runtime, locale)
+    const navigation = await view.findByRole('navigation', { name: 'Global panels' })
+    expect(view.container.querySelector('[data-slot="sidebar.panellist.inline"]')).toBeNull()
+    expect([...navigation.children].map(child => child.tagName)).toEqual(['BUTTON', 'BUTTON'])
+  })
+
+  it('places a registration directly after its own row and follows selection', async () => {
+    const { runtime, locale, view } = await bench()
+    await mountPanels(runtime, locale)
+    const inline = await mountInline(runtime)
+    const navigation = await view.findByRole('navigation', { name: 'Global panels' })
+    const content = await within(navigation).findByTestId('alpha-inline')
+    expect(view.getAllByTestId('alpha-inline')).toHaveLength(1)
+    const alphaRow = within(navigation).getByRole('button', { name: 'Alpha panel' })
+    expect(alphaRow.nextElementSibling?.contains(content) || alphaRow.nextElementSibling === content).toBe(true)
+    expect(content.getAttribute('data-wide')).toBe('true')
+    expect(content.getAttribute('data-active')).toBe('false')
+
+    fireEvent.click(alphaRow)
+    await waitFor(() => { expect(content.getAttribute('data-active')).toBe('true') })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Beta panel' }))
+    await waitFor(() => { expect(content.getAttribute('data-active')).toBe('false') })
+
+    await inline.dispose()
+    await waitFor(() => { expect(view.queryByTestId('alpha-inline')).toBeNull() })
+    expect(within(navigation).getAllByRole('button')).toHaveLength(2)
+  })
+
+  it('tells the occupant when the sidebar is collapsed', async () => {
+    const { runtime, locale, view } = await bench(true)
+    await mountPanels(runtime, locale)
+    await mountInline(runtime)
+    const content = await view.findByTestId('alpha-inline')
+    expect(content.getAttribute('data-wide')).toBe('false')
+  })
+})
+
 describe('sidebar launcher pins', () => {
   const PINS_KEY = 'dsh.slot.manual-order.sidebar.panellist.v1'
 
