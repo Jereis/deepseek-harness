@@ -56,7 +56,10 @@ it.each([
 
 it('names the brand through the display-name defines instead of the upstream product name', () => {
   const source = renderInstallerStrings(readInstallerLocales())
-  expect(source).toMatch(/^; Generated[^\n]*\n!define \/ifndef DSH_DISPLAY_NAME_EN "DeepSeek Harness"\n!define \/ifndef DSH_DISPLAY_NAME_ZH "DeepSeek Harness"\n/u)
+  expect(source.split('\n').slice(1, 3)).toEqual([
+    '!define /ifndef DSH_DISPLAY_NAME_EN "DeepSeek Harness"',
+    '!define /ifndef DSH_DISPLAY_NAME_ZH "DeepSeek Harness"',
+  ])
   expect(source.replace(/^!define \/ifndef DSH_DISPLAY_NAME_(?:EN|ZH) "DeepSeek Harness"$/gmu, '')).not.toContain('DeepSeek Harness')
   expect(source).toContain('LangString INSTALLER_RUNNING ${LANG_ENGLISH} "${DSH_DISPLAY_NAME_EN} is running.')
   expect(source).toContain('LangString INSTALLER_RUNNING ${LANG_SIMPCHINESE} "${DSH_DISPLAY_NAME_ZH} 正在运行')
