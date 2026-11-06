@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$Installer, [Parameter(Mandatory)][string]$ProductName,
     [Parameter(Mandatory)][string]$RegistryKey,
-    [Parameter(Mandatory)][string]$OutputDirectory)
+    [Parameter(Mandatory)][string]$OutputDirectory, [Parameter(Mandatory)][string]$Language)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'windows-installer-ui.ps1')
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
@@ -14,18 +14,8 @@ $uninstaller = Join-Path $installPath ('Uninstall ' + $ProductName + '.exe')
 $processes = [Collections.Generic.List[Diagnostics.Process]]::new()
 $results = [Collections.Generic.List[string]]::new()
 $expected = Get-Content (Join-Path $PSScriptRoot 'expected/windows-installer.json') -Raw | ConvertFrom-Json
-$localizedCopy = @{ ENGLISH = @{}; SIMPCHINESE = @{} }
-# The fixture keeps upstream's brand, so the display-name defines keep their strings.nsh defaults.
-$displayNames = @{}
-Get-Content (Join-Path $PSScriptRoot '../installer/strings.nsh') -Encoding UTF8 | ForEach-Object {
-    if ($_ -match '^!define /ifndef (DSH_DISPLAY_NAME_\w+) "(.*)"$') {
-        $displayNames[$Matches[1]] = $Matches[2]
-    } elseif ($_ -match '^LangString (INSTALLER_\w+) \$\{LANG_(ENGLISH|SIMPCHINESE)\} "(.*)"$') {
-        $copy = $Matches[3]
-        foreach ($name in $displayNames.Keys) { $copy = $copy.Replace('${' + $name + '}', $displayNames[$name]) }
-        $localizedCopy[$Matches[2]][$Matches[1]] = $copy
-    }
-}
+$resource = Get-Content (Join-Path $PSScriptRoot "../installer/locales/$Language.json") -Encoding UTF8 -Raw | ConvertFrom-Json
+$localizedCopy = @{ $Language = $resource.strings }
 function Wait-Control([Diagnostics.Process]$Process, [string]$Text, [switch]$Dialog) {
     $timer = [Diagnostics.Stopwatch]::StartNew()
     do {
