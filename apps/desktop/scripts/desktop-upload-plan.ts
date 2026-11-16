@@ -34,6 +34,8 @@ export interface DesktopUploadArtifact {
   readonly filename: string
   readonly key: string
   readonly contentType: string
+  /** Browser save name for fixed website downloads, preserving the validated installer basename. */
+  readonly contentDisposition?: string
   readonly channelMetadata: boolean
   /** Published YAML with normalized artifact URLs; binary bytes remain file-backed. */
   readonly contents?: string
@@ -62,6 +64,8 @@ export interface DesktopUploadPlanOptions {
   readonly latest?: boolean
   /** Upload an unsigned Windows package built with `DSH_DESKTOP_UNSIGNED_UPDATES=1` from its unsigned artifact directory. */
   readonly unsigned?: boolean
+  /** Percentage of installations eligible for this publication; absent preserves packaged metadata. */
+  readonly stagingPercentage?: number | undefined
   readonly environment?: NodeJS.ProcessEnv
   readonly repositoryRoot?: string
   readonly appRoot?: string
@@ -230,7 +234,6 @@ export async function createDesktopUploadPlan(
     throw new Error(`desktop upload: ${targetName} package completion record for ${buildVersion} is ${unsigned ? 'not ' : ''}an unsigned package`)
   }
 
-  if (update.channel === 'latest' && buildVersion.includes('-')) throw new Error('desktop upload: latest requires a stable version')
   const metadataFilename = desktopUpdateMetadataFilename(buildVersion, target.platform, update.channel)
   const metadataPath = join(artifactsRoot, metadataFilename)
   let metadataValue: unknown
@@ -282,6 +285,7 @@ export async function createDesktopUploadPlan(
   const payloadUrl = `${update.origin}/${binaryPrefix}/${updaterInfo.filename}`
   const published = {
     ...metadata,
+    ...(options.stagingPercentage === undefined ? {} : { stagingPercentage: options.stagingPercentage }),
     files: [{ ...object(metadata.files[0], `${metadataFilename}.files[0]`), url: payloadUrl }],
     ...(metadata.path === undefined ? {} : { path: payloadUrl }),
   }
@@ -300,7 +304,8 @@ export async function createDesktopUploadPlan(
     bucket: update.bucket,
     secretIdEnvName: update.secretIdEnvName,
     secretKeyEnvName: update.secretKeyEnvName,
-    artifacts: options.latest ? [{ ...installerArtifact, filename: latestFilename, key: latestKey }] : artifacts,
+    artifacts: options.latest ? [{ ...installerArtifact, filename: latestFilename, key: latestKey,
+      contentDisposition: `attachment; filename="${installerArtifact.filename}"` }] : artifacts,
     ...typeof buildRecord.commit === 'string' ? { commit: buildRecord.commit } : {},
     ...typeof buildRecord.dirty === 'boolean' ? { dirty: buildRecord.dirty } : {},
   }
