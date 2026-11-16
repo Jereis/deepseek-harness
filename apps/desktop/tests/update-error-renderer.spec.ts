@@ -302,8 +302,11 @@ it('offers configuration recovery from a mandatory update error', async () => {
 it('accepts another response after a keep-open action publishes its next revision', async () => {
   const p = page('update-dialog')
   const locale = resolveDesktopLocale('zh-CN')
-  let state: UpdateDialogView = { revision: 1, locale: locale.id, title: 'Settings', message: 'Settings error', detail: '',
-    buttons: ['Reload', 'Show file', 'Close'], cancelId: 2, closeLabel: 'Close', technicalDetails: '', technicalDetailsLabel: '' }
+  let state: UpdateDialogView = {
+    revision: 1, locale: locale.id, title: 'Settings', message: 'Settings error', detail: '',
+    buttons: ['Reload', 'Show file', 'Close'], cancelId: 2, closeLabel: 'Close',
+    technicalDetails: '', technicalDetailsLabel: '', dismissible: true,
+  }
   let publish!: (view: UpdateDialogView | null) => void
   const respond = vi.fn(async (_revision: number, index: number) => {
     if (index === 1) { state = { ...state, revision: state.revision + 1 }; publish(state) }
