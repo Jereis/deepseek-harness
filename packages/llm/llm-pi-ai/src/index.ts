@@ -387,12 +387,18 @@ export function apply(ctx: Context, config: Config): void {
         try {
           resolved = resolveProfiles(structuredClone(providers), 'strict')
         } catch (error) {
-          throw new LlmError(`llm-pi-ai: invalid contributed route: ${(error as Error).message}`, 'INVALID_ROUTE', { cause: error })
+          throw LlmError.fromFailure(
+            { message: `llm-pi-ai: invalid contributed route: ${(error as Error).message}`, code: 'INVALID_ROUTE' },
+            { cause: error },
+          )
         }
         const taken = new Set([...configProfiles().keys(), ...contributed.keys()])
         for (const provider of resolved.keys()) {
           if (taken.has(provider)) {
-            throw new LlmError(`llm-pi-ai: contributed route "${provider}" is already served by this plugin`, 'DUPLICATE_ROUTE')
+            throw LlmError.fromFailure({
+              message: `llm-pi-ai: contributed route "${provider}" is already served by this plugin`,
+              code: 'DUPLICATE_ROUTE',
+            })
           }
         }
         const key = Symbol('llm-pi-ai contribution')
